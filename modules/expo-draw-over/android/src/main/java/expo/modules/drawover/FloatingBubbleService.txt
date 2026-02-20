@@ -1,0 +1,535 @@
+package expo.modules.drawover
+
+import android.app.*
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.util.Log
+import android.view.*
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.TextView
+import androidx.core.app.NotificationCompat
+
+class FloatingBubbleService : Service() {
+
+    private var windowManager: WindowManager? = null
+    private var floatingView: View? = null
+    private var dismissView: View? = null
+    private var bubbleIcon: ImageView? = null
+    private var notificationBadge: TextView? = null
+    private var rippleView: View? = null
+
+    private var isShowing = false
+    private var isDismissVisible = false
+    private var initialX = 0
+    private var initialY = 0
+    private var initialTouchX = 0f
+    private var initialTouchY = 0f
+
+    private val handler = Handler(Looper.getMainLooper())
+
+    companion object {
+        private const val TAG = "FloatingBubbleService"
+        const val ACTION_START = "ACTION_START"
+        const val ACTION_STOP = "ACTION_STOP"
+        const val ACTION_UPDATE_BADGE = "ACTION_UPDATE_BADGE"
+        const val ACTION_SHOW_RIPPLE = "ACTION_SHOW_RIPPLE"
+        const val ACTION_APP_FOREGROUND = "ACTION_APP_FOREGROUND"
+        const val ACTION_APP_BACKGROUND = "ACTION_APP_BACKGROUND"
+        const val EXTRA_BADGE_COUNT = "EXTRA_BADGE_COUNT"
+        const val CHANNEL_ID = "floating_bubble_channel"
+        const val NOTIFICATION_ID = 1001
+
+        private var instance: FloatingBubbleService? = null
+
+        fun isRunning(): Boolean = instance != null
+
+        fun start(context: Context) {
+            val intent = Intent(context, FloatingBubbleService::class.java).apply {
+                action = ACTION_START
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun stop(context: Context) {
+            val intent = Intent(context, FloatingBubbleService::class.java).apply {
+                action = ACTION_STOP
+            }
+            context.startService(intent)
+        }
+
+        fun updateBadge(context: Context, count: Int) {
+            val intent = Intent(context, FloatingBubbleService::class.java).apply {
+                action = ACTION_UPDATE_BADGE
+                putExtra(EXTRA_BADGE_COUNT, count)
+            }
+            context.startService(intent)
+        }
+
+        fun showRipple(context: Context) {
+            val intent = Intent(context, FloatingBubbleService::class.java).apply {
+                action = ACTION_SHOW_RIPPLE
+            }
+            context.startService(intent)
+        }
+
+        fun notifyAppForeground(context: Context) {
+            val intent = Intent(context, FloatingBubbleService::class.java).apply {
+                action = ACTION_APP_FOREGROUND
+            }
+            context.startService(intent)
+        }
+
+        fun notifyAppBackground(context: Context) {
+            val intent = Intent(context, FloatingBubbleService::class.java).apply {
+                action = ACTION_APP_BACKGROUND
+            }
+            context.startService(intent)
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        Log.d(TAG, "✅ onCreate() called")
+        instance = this
+        createNotificationChannel()
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "⚡ onStartCommand() called with action: ${intent?.action}")
+
+        // Always call startForeground first on Android 8+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForeground(NOTIFICATION_ID, createNotification())
+        }
+
+        when (intent?.action) {
+            ACTION_START -> showFloatingBubble()
+            ACTION_STOP -> {
+                hideFloatingBubble()
+                hideDismissZone()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+                stopSelf()
+            }
+            ACTION_UPDATE_BADGE -> {
+                val count = intent.getIntExtra(EXTRA_BADGE_COUNT, 0)
+                updateBadgeCount(count)
+            }
+            ACTION_SHOW_RIPPLE -> animateRipple()
+
+            // FIX 2: Hide bubble when app comes to foreground
+            ACTION_APP_FOREGROUND -> {
+                Log.d(TAG, "📱 App in foreground - hiding bubble")
+                floatingView?.visibility = View.GONE
+            }
+
+            // FIX 2: Show bubble when app goes to background
+            ACTION_APP_BACKGROUND -> {
+                Log.d(TAG, "📱 App in background - showing bubble")
+                floatingView?.visibility = View.VISIBLE
+            }
+        }
+        return START_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Log.d(TAG, "💀 onDestroy() called")
+        hideFloatingBubble()
+        hideDismissZone()
+        instance = null
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Floating Bubble",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Keeps the floating bubble active"
+                setShowBadge(false)
+            }
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager?.createNotificationChannel(channel)
+        }
+    }
+
+    private fun createNotification(): Notification {
+        val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val pendingIntent = PendingIntent.getActivity(this, 0, intent, pendingIntentFlags)
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("You're Online")
+            .setContentText("Tap to open OkraRides")
+            .setSmallIcon(applicationInfo.icon)
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
+    }
+
+    // ─── FIX 3: Dismiss zone (Facebook Messenger style) ──────────────────────
+
+    private fun showDismissZone() {
+        if (isDismissVisible) return
+
+        val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+
+        val dismissSize = (72 * resources.displayMetrics.density).toInt()
+        val screenWidth = resources.displayMetrics.widthPixels
+
+        dismissView = FrameLayout(this).apply {
+            val circle = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#CC000000"))
+                setStroke(
+                    (2 * resources.displayMetrics.density).toInt(),
+                    Color.WHITE
+                )
+            }
+            background = circle
+
+            // X label
+            val xText = TextView(context).apply {
+                text = "✕"
+                textSize = 20f
+                setTextColor(Color.WHITE)
+                gravity = android.view.Gravity.CENTER
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            }
+            addView(xText)
+        }
+
+        val params = WindowManager.LayoutParams(
+            dismissSize,
+            dismissSize,
+            layoutFlag,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
+            y = (48 * resources.displayMetrics.density).toInt()
+        }
+
+        windowManager?.addView(dismissView, params)
+        isDismissVisible = true
+        Log.d(TAG, "Dismiss zone shown")
+    }
+
+    private fun hideDismissZone() {
+        if (!isDismissVisible || dismissView == null) return
+        try {
+            windowManager?.removeView(dismissView)
+            dismissView = null
+            isDismissVisible = false
+            Log.d(TAG, "Dismiss zone hidden")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error hiding dismiss zone", e)
+        }
+    }
+
+    private fun isOverDismissZone(x: Int, y: Int): Boolean {
+        val screenWidth = resources.displayMetrics.widthPixels
+        val screenHeight = resources.displayMetrics.heightPixels
+        val dismissSize = (72 * resources.displayMetrics.density).toInt()
+        val dismissY = screenHeight - (120 * resources.displayMetrics.density).toInt()
+        val dismissX = screenWidth / 2
+
+        val distance = Math.sqrt(
+            ((x - dismissX) * (x - dismissX) + (y - dismissY) * (y - dismissY)).toDouble()
+        )
+        return distance < dismissSize
+    }
+
+    // ─── Main bubble ──────────────────────────────────────────────────────────
+
+    private fun showFloatingBubble() {
+        Log.d(TAG, "🎈 showFloatingBubble() called, isShowing: $isShowing")
+        if (isShowing) return
+
+        try {
+            floatingView = createFloatingBubbleView()
+
+            val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
+            }
+
+            // FIX 4: Start at top left (x=0, y=100)
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                layoutFlag,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = android.view.Gravity.TOP or android.view.Gravity.START
+                x = 0
+                y = 100
+            }
+
+            windowManager?.addView(floatingView, params)
+            isShowing = true
+            Log.d(TAG, "✅ Bubble added to window")
+
+            setupTouchListener(params)
+            setupClickListener()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error showing floating bubble", e)
+            isShowing = false
+        }
+    }
+
+    private fun createFloatingBubbleView(): View {
+        val density = resources.displayMetrics.density
+        val bubbleSize = (64 * density).toInt()
+        val iconSize = (56 * density).toInt()
+        val badgeSize = (24 * density).toInt()
+
+        val container = FrameLayout(this).apply {
+            layoutParams = ViewGroup.LayoutParams(bubbleSize, bubbleSize)
+        }
+
+        // Ripple ring (behind icon)
+        rippleView = View(this).apply {
+            layoutParams = FrameLayout.LayoutParams(bubbleSize, bubbleSize).apply {
+                gravity = android.view.Gravity.CENTER
+            }
+            val rippleDrawable = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#80FF6B00"))
+            }
+            background = rippleDrawable
+            visibility = View.GONE
+        }
+        container.addView(rippleView)
+
+        // FIX 1: App icon inside the bubble
+        bubbleIcon = ImageView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(iconSize, iconSize).apply {
+                gravity = android.view.Gravity.CENTER
+            }
+            // Use the app's launcher icon
+            val appIcon = packageManager.getApplicationIcon(applicationInfo)
+            setImageDrawable(appIcon)
+            elevation = 8f
+
+            // Clip to circle
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) {
+                    outline.setOval(0, 0, view.width, view.height)
+                }
+            }
+            clipToOutline = true
+
+            // Orange circular background behind icon
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#FF6B00"))
+            }
+            background = bg
+            setPadding(8, 8, 8, 8)
+        }
+        container.addView(bubbleIcon)
+
+        // Notification badge
+        notificationBadge = TextView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(badgeSize, badgeSize).apply {
+                gravity = android.view.Gravity.TOP or android.view.Gravity.END
+            }
+            val badgeDrawable = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.RED)
+            }
+            background = badgeDrawable
+            gravity = android.view.Gravity.CENTER
+            textSize = 10f
+            setTextColor(Color.WHITE)
+            text = "1"
+            visibility = View.GONE
+            elevation = 10f
+        }
+        container.addView(notificationBadge)
+
+        return container
+    }
+
+    private fun setupTouchListener(params: WindowManager.LayoutParams) {
+        floatingView?.setOnTouchListener { view, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initialX = params.x
+                    initialY = params.y
+                    initialTouchX = event.rawX
+                    initialTouchY = event.rawY
+                    // FIX 3: Show dismiss zone when drag starts
+                    showDismissZone()
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    params.x = initialX + (event.rawX - initialTouchX).toInt()
+                    params.y = initialY + (event.rawY - initialTouchY).toInt()
+                    windowManager?.updateViewLayout(floatingView, params)
+
+                    // Highlight dismiss zone when hovering over it
+                    val overDismiss = isOverDismissZone(
+                        params.x + (view.width / 2),
+                        params.y + (view.height / 2)
+                    )
+                    dismissView?.alpha = if (overDismiss) 1f else 0.6f
+                    true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    hideDismissZone()
+
+                    val currentX = params.x + (view.width / 2)
+                    val currentY = params.y + (view.height / 2)
+
+                    // FIX 3: Drop onto X → dismiss bubble
+                    if (isOverDismissZone(currentX, currentY)) {
+                        Log.d(TAG, "Bubble dragged to dismiss zone - hiding")
+                        hideFloatingBubble()
+                        return@setOnTouchListener true
+                    }
+
+                    // Snap to nearest edge
+                    val screenWidth = resources.displayMetrics.widthPixels
+                    params.x = if (params.x > screenWidth / 2) {
+                        screenWidth - view.width
+                    } else {
+                        0
+                    }
+                    windowManager?.updateViewLayout(floatingView, params)
+
+                    // Detect tap (not drag)
+                    val dx = event.rawX - initialTouchX
+                    val dy = event.rawY - initialTouchY
+                    if (dx * dx + dy * dy < 100) {
+                        view.performClick()
+                    }
+                    true
+                }
+
+                else -> false
+            }
+        }
+    }
+
+    private fun setupClickListener() {
+        floatingView?.setOnClickListener {
+            Log.d(TAG, "Bubble clicked - opening app")
+            val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            }
+            startActivity(intent)
+        }
+    }
+
+    private fun hideFloatingBubble() {
+        if (floatingView != null && isShowing) {
+            try {
+                windowManager?.removeView(floatingView)
+                floatingView = null
+                isShowing = false
+                Log.d(TAG, "✅ Bubble hidden")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error hiding bubble", e)
+            }
+        }
+    }
+
+    private fun updateBadgeCount(count: Int) {
+        handler.post {
+            notificationBadge?.apply {
+                if (count > 0) {
+                    visibility = View.VISIBLE
+                    text = if (count > 9) "9+" else count.toString()
+                } else {
+                    visibility = View.GONE
+                }
+            }
+        }
+    }
+
+    // FIX 5: Ripple animation around the bubble
+    private fun animateRipple() {
+        handler.post {
+            rippleView?.apply {
+                visibility = View.VISIBLE
+                alpha = 0.8f
+                scaleX = 1f
+                scaleY = 1f
+
+                animate()
+                    .alpha(0f)
+                    .scaleX(2.2f)
+                    .scaleY(2.2f)
+                    .setDuration(800)
+                    .withEndAction {
+                        visibility = View.GONE
+                        // Repeat ripple 3 times for urgency
+                        handler.postDelayed({ animateRippleOnce() }, 200)
+                        handler.postDelayed({ animateRippleOnce() }, 700)
+                    }
+                    .start()
+            }
+        }
+    }
+
+    private fun animateRippleOnce() {
+        rippleView?.apply {
+            visibility = View.VISIBLE
+            alpha = 0.8f
+            scaleX = 1f
+            scaleY = 1f
+            animate()
+                .alpha(0f)
+                .scaleX(2.2f)
+                .scaleY(2.2f)
+                .setDuration(800)
+                .withEndAction { visibility = View.GONE }
+                .start()
+        }
+    }
+}

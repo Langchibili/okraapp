@@ -1,0 +1,56 @@
+const { withAndroidManifest } = require('@expo/config-plugins');
+
+const withFloatingBubble = (config) => {
+  return withAndroidManifest(config, async (config) => {
+    const androidManifest = config.modResults;
+    const manifest = androidManifest.manifest;
+
+    // ── Permissions ──────────────────────────────────────────
+    if (!manifest['uses-permission']) {
+      manifest['uses-permission'] = [];
+    }
+
+    const permissionsToAdd = [
+      'android.permission.SYSTEM_ALERT_WINDOW',
+      'android.permission.FOREGROUND_SERVICE',
+      'android.permission.FOREGROUND_SERVICE_LOCATION',
+    ];
+
+    permissionsToAdd.forEach((permission) => {
+      const exists = manifest['uses-permission'].some(
+        (p) => p.$['android:name'] === permission
+      );
+      if (!exists) {
+        manifest['uses-permission'].push({
+          $: { 'android:name': permission },
+        });
+      }
+    });
+
+    // ── Service declaration ──────────────────────────────────
+    const application = manifest.application[0];
+
+    if (!application.service) {
+      application.service = [];
+    }
+
+    const serviceExists = application.service.some(
+      (s) => s.$['android:name'] === 'expo.modules.drawover.FloatingBubbleService'
+    );
+
+    if (!serviceExists) {
+      application.service.push({
+        $: {
+          'android:name': 'expo.modules.drawover.FloatingBubbleService',
+          'android:enabled': 'true',
+          'android:exported': 'false',
+          'android:foregroundServiceType': 'location',
+        },
+      });
+    }
+
+    return config;
+  });
+};
+
+module.exports = withFloatingBubble;

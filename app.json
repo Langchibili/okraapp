@@ -1,30 +1,87 @@
 {
   "expo": {
     "name": "OkraApp",
-    "slug": "OkraApp",
+    "slug": "okra-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "ios": {
-      "supportsTablet": true
-    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Okra App needs your location to connect you with nearby riders and navigate to pickup/dropoff points.",
+          "locationAlwaysPermission": "Okra App needs background location access to receive ride requests while you use other apps.",
+          "locationWhenInUsePermission": "Okra App needs your location to show nearby drivers and estimate fares.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#FF6B00",
+          "sounds": [
+            "./assets/sounds/okra_ride_request_1.wav"
+          ],
+          "androidMode": "default",
+          "androidCollapsedTitle": "Okra Rides"
+        }
+      ],
+      "./plugins/withAndroidForegroundService.js",
+      "./plugins/withDrawOverPermission.js",
+      "./plugins/withBackgroundModes.js",
+      "./plugins/withFullScreenNotification.js",
+      "expo-audio",
+      "expo-secure-store"
+    ],
     "android": {
+      "package": "com.okraapp",
+      "versionCode": 1,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "WAKE_LOCK",
+        "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+        "SYSTEM_ALERT_WINDOW",
+        "POST_NOTIFICATIONS",
+        "VIBRATE",
+        "USE_FULL_SCREEN_INTENT"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+        "backgroundColor": "#FFFFFF"
+      }
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
+    "ios": {
+      "bundleIdentifier": "com.okra.rides",
+      "buildNumber": "1.0.0",
+      "supportsTablet": false,
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location",
+          "fetch",
+          "remote-notification"
+        ],
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Okra App needs background location access to receive ride requests while you use other apps.",
+        "NSLocationWhenInUseUsageDescription": "Okra App needs your location to show nearby drivers and estimate fares.",
+        "NSLocationAlwaysUsageDescription": "Okra App needs background location access to connect you with riders.",
+        "UIBackgroundLocationIndicator": true
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id"
+      }
     }
   }
 }
