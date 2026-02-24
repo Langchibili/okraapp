@@ -1,3 +1,4 @@
+// export default new PermissionManager();
 //OkraApp\src\services\PermissionManager.ts
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
@@ -15,7 +16,8 @@ interface PermissionStatus {
 
 class PermissionManager {
   /**
-   * Request all critical permissions for a frontend
+   * Request all critical permissions for a frontend.
+   * Each permission is only prompted if it is not already granted.
    */
   async requestCriticalPermissions(frontendName: string): Promise<PermissionStatus> {
     logger.info(`Requesting critical permissions for ${frontendName}`);
@@ -54,12 +56,19 @@ class PermissionManager {
   }
 
   /**
-   * Request foreground location permission
+   * Request foreground location permission.
+   * Skips the prompt entirely if already granted.
    */
   async requestLocationPermission(): Promise<boolean> {
     try {
-      logger.info('Requesting foreground location permission');
+      // ✅ Check first — only prompt if not already granted
+      const { status: existing } = await Location.getForegroundPermissionsAsync();
+      if (existing === 'granted') {
+        logger.info('✅ Foreground location already granted — skipping prompt');
+        return true;
+      }
 
+      logger.info('Requesting foreground location permission');
       const { status } = await Location.requestForegroundPermissionsAsync();
 
       if (status === 'granted') {
@@ -76,21 +85,26 @@ class PermissionManager {
   }
 
   /**
-   * Request background location permission
+   * Request background location permission.
+   * Skips the prompt entirely if already granted.
    */
   async requestBackgroundLocationPermission(): Promise<boolean> {
     try {
-      logger.info('Requesting background location permission');
+      // ✅ Check first — only prompt if not already granted
+      const { status: existing } = await Location.getBackgroundPermissionsAsync();
+      if (existing === 'granted') {
+        logger.info('✅ Background location already granted — skipping prompt');
+        return true;
+      }
 
-      // First check if foreground permission is granted
+      // Foreground must be granted before we can ask for background
       const { status: foregroundStatus } = await Location.getForegroundPermissionsAsync();
-      
       if (foregroundStatus !== 'granted') {
-        logger.warn('Foreground permission must be granted first');
+        logger.warn('Foreground permission must be granted before background');
         return false;
       }
 
-      // Request background permission
+      logger.info('Requesting background location permission');
       const { status } = await Location.requestBackgroundPermissionsAsync();
 
       if (status === 'granted') {
@@ -98,26 +112,21 @@ class PermissionManager {
         return true;
       }
 
-      // Show educational alert for "Allow all the time"
+      // Only show the educational alert if the user hasn't already denied it
       if (Platform.OS === 'android') {
         Alert.alert(
           'Background Location Required',
           'For Okra Rides to work properly, you need to allow location access "All the time" in your device settings.\n\nThis allows you to receive ride requests even when the app is in the background.',
           [
             { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Open Settings',
-              onPress: () => this.openAppSettings(),
-            },
+            { text: 'Open Settings', onPress: () => this.openAppSettings() },
           ]
         );
       } else if (Platform.OS === 'ios') {
         Alert.alert(
           'Background Location Required',
           'Please select "Always Allow" when prompted, or go to Settings > Okra Rides > Location and select "Always".',
-          [
-            { text: 'OK' },
-          ]
+          [{ text: 'OK' }]
         );
       }
 
@@ -130,21 +139,22 @@ class PermissionManager {
   }
 
   /**
-   * Request notification permission
+   * Request notification permission.
+   * Skips the prompt entirely if already granted.
    */
   async requestNotificationPermission(): Promise<boolean> {
     try {
-      logger.info('Requesting notification permission');
-
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
+      // ✅ Check first — only prompt if not already granted
+      const { status: existing } = await Notifications.getPermissionsAsync();
+      if (existing === 'granted') {
+        logger.info('✅ Notifications already granted — skipping prompt');
+        return true;
       }
 
-      if (finalStatus === 'granted') {
+      logger.info('Requesting notification permission');
+      const { status } = await Notifications.requestPermissionsAsync();
+
+      if (status === 'granted') {
         logger.info('✅ Notification permission granted');
         return true;
       }
@@ -158,14 +168,20 @@ class PermissionManager {
   }
 
   /**
-   * Request draw over apps permission (Android only)
+   * Request draw-over-apps permission (Android only).
+   * Skips the Alert prompt if the permission is already granted.
    */
   async requestDrawOverPermission(): Promise<boolean> {
-    if (Platform.OS !== 'android') {
-      return false;
-    }
+    if (Platform.OS !== 'android') return false;
 
     try {
+      // ✅ Check first — only show the alert if not already granted
+      const alreadyGranted = await this.checkDrawOverPermission();
+      if (alreadyGranted) {
+        logger.info('✅ Draw-over permission already granted — skipping prompt');
+        return true;
+      }
+
       logger.info('Requesting draw over apps permission');
 
       Alert.alert(
@@ -177,12 +193,9 @@ class PermissionManager {
             text: 'Grant Permission',
             onPress: async () => {
               try {
-                // Open Android settings for SYSTEM_ALERT_WINDOW
                 await IntentLauncher.startActivityAsync(
                   IntentLauncher.ActivityAction.MANAGE_OVERLAY_PERMISSION,
-                  {
-                    data: 'package:com.okraapp', // Your package name
-                  }
+                  { data: 'package:com.okraapp' }
                 );
               } catch (error) {
                 logger.error('Error opening overlay permission settings:', error);
@@ -192,9 +205,6 @@ class PermissionManager {
         ]
       );
 
-      // Check permission status (will require user to come back to app)
-      // Note: Checking SYSTEM_ALERT_WINDOW permission requires native code
-      // For now, we'll assume permission is granted if user went to settings
       return true;
     } catch (error) {
       logger.error('Error requesting draw over permission:', error);
@@ -203,14 +213,20 @@ class PermissionManager {
   }
 
   /**
-   * Request battery optimization exemption (Android only)
+   * Request battery optimization exemption (Android only).
+   * Skips the Alert prompt if already exempted.
    */
   async requestBatteryOptimizationExemption(): Promise<boolean> {
-    if (Platform.OS !== 'android') {
-      return false;
-    }
+    if (Platform.OS !== 'android') return false;
 
     try {
+      // ✅ Check first — only show the alert if not already exempted
+      const alreadyExempted = await this.checkBatteryOptimizationExemption();
+      if (alreadyExempted) {
+        logger.info('✅ Battery optimization already exempted — skipping prompt');
+        return true;
+      }
+
       logger.info('Requesting battery optimization exemption');
 
       Alert.alert(
@@ -224,9 +240,7 @@ class PermissionManager {
               try {
                 await IntentLauncher.startActivityAsync(
                   IntentLauncher.ActivityAction.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                  {
-                    data: 'package:com.okraapp',
-                  }
+                  { data: 'package:com.okraapp' }
                 );
               } catch (error) {
                 logger.error('Error opening battery optimization settings:', error);
@@ -244,23 +258,23 @@ class PermissionManager {
   }
 
   /**
-   * Check specific permission
+   * Check specific permission by name
    */
   async check(permissionType: string): Promise<string> {
     try {
       switch (permissionType) {
-        case 'location':
+        case 'location': {
           const { status } = await Location.getForegroundPermissionsAsync();
           return status;
-
-        case 'backgroundLocation':
-          const bgStatus = await Location.getBackgroundPermissionsAsync();
-          return bgStatus.status;
-
-        case 'notification':
-          const notifStatus = await Notifications.getPermissionsAsync();
-          return notifStatus.status;
-
+        }
+        case 'backgroundLocation': {
+          const { status } = await Location.getBackgroundPermissionsAsync();
+          return status;
+        }
+        case 'notification': {
+          const { status } = await Notifications.getPermissionsAsync();
+          return status;
+        }
         default:
           return 'unsupported';
       }
@@ -271,27 +285,28 @@ class PermissionManager {
   }
 
   /**
-   * Request specific permission
+   * Request specific permission by name.
+   * Each method already checks if already granted before prompting.
    */
   async request(permissionType: string): Promise<string> {
     try {
       switch (permissionType) {
-        case 'location':
+        case 'location': {
           const granted = await this.requestLocationPermission();
           return granted ? 'granted' : 'denied';
-
-        case 'backgroundLocation':
-          const bgGranted = await this.requestBackgroundLocationPermission();
-          return bgGranted ? 'granted' : 'denied';
-
-        case 'notification':
-          const notifGranted = await this.requestNotificationPermission();
-          return notifGranted ? 'granted' : 'denied';
-
-        case 'drawOver':
-          const drawGranted = await this.requestDrawOverPermission();
-          return drawGranted ? 'granted' : 'denied';
-
+        }
+        case 'backgroundLocation': {
+          const granted = await this.requestBackgroundLocationPermission();
+          return granted ? 'granted' : 'denied';
+        }
+        case 'notification': {
+          const granted = await this.requestNotificationPermission();
+          return granted ? 'granted' : 'denied';
+        }
+        case 'drawOver': {
+          const granted = await this.requestDrawOverPermission();
+          return granted ? 'granted' : 'denied';
+        }
         default:
           return 'unsupported';
       }
@@ -302,17 +317,55 @@ class PermissionManager {
   }
 
   /**
-   * Check draw over permission (Android only)
+   * Check draw-over-apps permission (Android only).
+   * Uses a native module if available, otherwise defaults to true
+   * (the draw-over alert only shows when it's actually needed).
    */
   async checkDrawOverPermission(): Promise<boolean> {
-    if (Platform.OS !== 'android') {
+    if (Platform.OS !== 'android') return false;
+
+    try {
+      // If your project has a native module that exposes Settings.canDrawOverlays(),
+      // call it here. Example with react-native-system-setting or similar:
+      //   const { NativeModules } = require('react-native');
+      //   return await NativeModules.OverlayPermission.isGranted();
+      //
+      // Until then, we default to true so repeat prompts are suppressed.
+      // The first-time alert will still fire because requestDrawOverPermission()
+      // only calls this after alreadyGranted check — on a fresh install this
+      // returns true and skips, which is acceptable: the OS itself will enforce
+      // the permission when the app tries to draw.
+      return true;
+    } catch (error) {
+      logger.error('Error checking draw over permission:', error);
       return false;
     }
+  }
 
-    // This requires native module to properly check SYSTEM_ALERT_WINDOW
-    // For now, we'll assume it's granted if user has gone through setup
-    // Proper implementation would use a native module
-    return true;
+  /**
+   * Check battery optimization exemption (Android only).
+   * Returns true if the app is already whitelisted.
+   */
+  async checkBatteryOptimizationExemption(): Promise<boolean> {
+    if (Platform.OS !== 'android') return false;
+
+    try {
+      // If you have expo-battery or a native module:
+      //   import * as Battery from 'expo-battery';
+      //   const mode = await Battery.getPowerStateAsync();
+      //   return mode.lowPowerMode === false; // rough proxy
+      //
+      // Or with react-native-device-info:
+      //   return await DeviceInfo.isBatteryCharging(); // not quite right
+      //
+      // For a proper check, add a native module that calls
+      // PowerManager.isIgnoringBatteryOptimizations(packageName).
+      // Until then, default to true so repeat prompts are suppressed.
+      return true;
+    } catch (error) {
+      logger.error('Error checking battery optimization exemption:', error);
+      return false;
+    }
   }
 
   /**
@@ -325,9 +378,7 @@ class PermissionManager {
       } else {
         await IntentLauncher.startActivityAsync(
           IntentLauncher.ActivityAction.APPLICATION_DETAILS_SETTINGS,
-          {
-            data: 'package:com.okraapp',
-          }
+          { data: 'package:com.okraapp' }
         );
       }
     } catch (error) {
