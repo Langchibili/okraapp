@@ -20,7 +20,7 @@ export async function getDeviceInfo(): Promise<any> {
       expoVersion: Constants.expoVersion || 'Unknown',
       isDevice: Device.isDevice,
       totalMemory: Device.totalMemory,
-    };
+    }
 
     return deviceInfo;
   } catch (error) {

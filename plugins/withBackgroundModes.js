@@ -18,5 +18,5 @@ module.exports = function withBackgroundModes(config) {
     config.modResults.UIShowsBackgroundLocationIndicator = true;
 
     return config;
-  });
-};
+  })
+}

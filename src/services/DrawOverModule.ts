@@ -1,4 +1,4 @@
-// export default new DrawOverModule();
+// OkraApp\src\services\DrawOverModule.ts
 import DrawOverNativeModule from '../../modules/expo-draw-over';
 import { Platform } from 'react-native';
 import { logger } from '../utils/logger';

@@ -49,6 +49,7 @@ export const SOCKET_EVENTS = {
     TRIP_STARTED: 'ride:trip:started',
     TRIP_COMPLETED: 'ride:trip:completed',
     NO_DRIVERS: 'ride:no_drivers',
+    PAYMENT_REQUESTED: 'ride:payment:requested'
   },
   
   // Subscription Events
@@ -62,6 +63,7 @@ export const SOCKET_EVENTS = {
   PAYMENT: {
     SUCCESS: 'payment:success',
     FAILED: 'payment:failed',
+    PAYMENT_RECEIVED:'payment:received'
   },
   
   // Withdrawal Events
@@ -120,7 +122,8 @@ export const WEBVIEW_EVENTS = {
   RIDE_CANCELLED: 'RIDE_CANCELLED',
   RIDE_ACCEPT_SUCCESS: 'RIDE_ACCEPT_SUCCESS',
   RIDE_DECLINE_SUCCESS: 'RIDE_DECLINE_SUCCESS',
-  
+  PAYMENT_REQUESTED: 'PAYMENT_REQUESTED',
+
   // Trip Events
   DRIVER_ARRIVED: 'DRIVER_ARRIVED',
   TRIP_STARTED: 'TRIP_STARTED',
@@ -142,10 +145,12 @@ export const WEBVIEW_EVENTS = {
   SUBSCRIPTION_ACTIVATED: 'SUBSCRIPTION_ACTIVATED',
   
   // Payment Events
+  PAYMENT_RECEIVED:'PAYMENT_RECEIVED',
   PAYMENT_SUCCESS: 'PAYMENT_SUCCESS',
   PAYMENT_FAILED: 'PAYMENT_FAILED',
   WITHDRAWAL_PROCESSED: 'WITHDRAWAL_PROCESSED',
-  
+
+
   // Rating Events
   RATING_REQUEST: 'RATING_REQUEST',
   RATING_SUBMITTED: 'RATING_SUBMITTED',
