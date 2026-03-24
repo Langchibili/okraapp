@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "OkraApp",
-    "slug": "okra-app",
+    "slug": "okraapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -39,7 +39,8 @@
       "./plugins/withBackgroundModes.js",
       "./plugins/withFullScreenNotification.js",
       "expo-audio",
-      "expo-secure-store"
+      "expo-secure-store",
+      "./plugins/withKotlinJvmTarget"
     ],
     "android": {
       "package": "com.okraapp",
@@ -55,7 +56,14 @@
         "SYSTEM_ALERT_WINDOW",
         "POST_NOTIFICATIONS",
         "VIBRATE",
-        "USE_FULL_SCREEN_INTENT"
+        "USE_FULL_SCREEN_INTENT",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -70,18 +78,23 @@
         "UIBackgroundModes": [
           "location",
           "fetch",
+          "remote-notification",
+          "location",
+          "fetch",
           "remote-notification"
         ],
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Okra App needs background location access to receive ride requests while you use other apps.",
         "NSLocationWhenInUseUsageDescription": "Okra App needs your location to show nearby drivers and estimate fares.",
         "NSLocationAlwaysUsageDescription": "Okra App needs background location access to connect you with riders.",
-        "UIBackgroundLocationIndicator": true
+        "UIBackgroundLocationIndicator": true,
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "extra": {
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "9dbb3dbf-f0c1-44fb-86df-e4681a1771cf"
       }
-    }
+    },
+    "owner": "vectorfinancelimited"
   }
 }

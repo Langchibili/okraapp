@@ -1,16 +1,16 @@
 -- Merging decision tree log ---
 manifest
-ADDED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest527114605082478948.xml:2:13-83
-INJECTED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest527114605082478948.xml:2:13-83
+ADDED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest5172328089340705435.xml:2:13-83
+INJECTED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest5172328089340705435.xml:2:13-83
 	package
-		INJECTED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest527114605082478948.xml
+		INJECTED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest5172328089340705435.xml
 	xmlns:android
-		ADDED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest527114605082478948.xml:2:23-81
+		ADDED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest5172328089340705435.xml:2:23-81
 uses-sdk
-INJECTED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest527114605082478948.xml reason: use-sdk injection requested
-INJECTED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest527114605082478948.xml
-INJECTED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest527114605082478948.xml
+INJECTED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest5172328089340705435.xml reason: use-sdk injection requested
+INJECTED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest5172328089340705435.xml
+INJECTED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest5172328089340705435.xml
 	android:targetSdkVersion
-		INJECTED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest527114605082478948.xml
+		INJECTED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest5172328089340705435.xml
 	android:minSdkVersion
-		INJECTED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest527114605082478948.xml
+		INJECTED from C:\Users\langson\Projects\Okra\OkraApp\modules\expo-draw-over\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest5172328089340705435.xml
