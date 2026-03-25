@@ -108,9 +108,10 @@ export const OfflineScreen: React.FC<OfflineScreenProps> = ({ onRetry }) => {
         ]}>
           <View style={styles.logoRing}>
             <Image
-              source={require('../../assets/okra-tech-logo.png')}
+              source={require('assets/okra-tech-logo.png')}   
               style={styles.logoImg}
               resizeMode="contain"
+              onError={(e) => console.error('❌ Logo image failed to load:', e.nativeEvent)}
             />
           </View>
           <Text style={styles.brandName}>Okra</Text>

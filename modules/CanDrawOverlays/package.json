@@ -1,6 +1,0 @@
-{
-  "name": "can-draw-overlays",
-  "version": "1.0.0",
-  "description": "Local Expo module to check Settings.canDrawOverlays on Android",
-  "main": "index.ts"
-}

@@ -40,7 +40,9 @@
       "./plugins/withFullScreenNotification.js",
       "expo-audio",
       "expo-secure-store",
-      "./plugins/withKotlinJvmTarget"
+      "./plugins/withKotlinJvmTarget",
+      "expo-video",
+      "expo-asset"
     ],
     "android": {
       "package": "com.okraapp",

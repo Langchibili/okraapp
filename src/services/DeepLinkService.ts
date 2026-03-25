@@ -1,4 +1,5 @@
 //OkraApp\src\services\DeepLinkService.ts
+import { CONSTANTS } from '@utils/constants';
 import { logger } from '../utils/logger';
 
 type WebViewSender = ((data: any) => void) | null;
@@ -18,10 +19,10 @@ class DeepLinkService {
 
       let url = '';
       const baseUrls = {
-        driver: process.env.EXPO_PUBLIC_DRIVER_URL || 'https://driver.okra.tech',
-        rider: process.env.EXPO_PUBLIC_RIDER_URL || 'https://book.okra.tech',
-        conductor: process.env.EXPO_PUBLIC_CONDUCTOR_URL || 'https://conductor.okra.tech',
-        delivery: process.env.EXPO_PUBLIC_DELIVERY_URL || 'https://delivery.okra.tech',
+        driver: CONSTANTS.FRONTEND_URLS.driver,
+        rider: CONSTANTS.FRONTEND_URLS.rider,
+        conductor: CONSTANTS.FRONTEND_URLS.conductor,
+        delivery: CONSTANTS.FRONTEND_URLS.delivery,
       };
 
       // Route based on notification type

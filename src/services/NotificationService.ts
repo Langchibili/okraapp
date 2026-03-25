@@ -4,6 +4,7 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { logger } from '../utils/logger';
 import DeepLinkService from './DeepLinkService';
+import { EXPO_PUBLIC_PROJECT_ID } from '@utils/constants';
 
 // Set notification handler
 Notifications.setNotificationHandler({
@@ -117,7 +118,7 @@ class NotificationService {
 
       // Get Expo push token
       const token = await Notifications.getExpoPushTokenAsync({
-        projectId: process.env.EXPO_PUBLIC_PROJECT_ID || 'your-project-id',
+        projectId: EXPO_PUBLIC_PROJECT_ID || 'your-project-id',
       });
 
       this.notificationToken = token.data;

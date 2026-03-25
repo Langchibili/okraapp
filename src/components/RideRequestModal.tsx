@@ -141,10 +141,13 @@ export const RideRequestModal: React.FC<Props> = ({
   };
 
   const estimatedDuration = rideRequest ? Math.round((rideRequest.distance / 40) * 60) : 0;
-  const riderName = rideRequest
-    ? (rideRequest.riderName || rideRequest.rider?.name || 'Rider')
-    : 'Rider';
-
+  let riderName = rideRequest
+    ? (rideRequest.riderName || rideRequest.rider?.name || 'Passenger')
+    : 'Passenger';
+  
+  if(riderName === "null null"){
+    riderName = "Passenger"
+  }
   // ✅ The Modal always renders when open=true.
   // The null guard is INSIDE the Modal so it mounts and triggers animationType="slide"
   // even if rideRequest arrives in a separate render cycle from open=true.

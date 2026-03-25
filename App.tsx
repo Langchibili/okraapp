@@ -53,13 +53,8 @@ TaskManager.defineTask(CONSTANTS.TASKS.NOTIFICATION_HANDLER, async ({ data, erro
   if (data) { await NotificationService.handleBackgroundNotification(data); }
 });
 
-const API_URL = CONSTANTS.BACKEND_URL;
-// alert(API_URL)
-const FRONTEND_URL = __DEV__
-  ? Platform.OS === 'android'
-    ? 'http://10.196.215.23:3000/'
-    : 'http://10.196.215.23:3000'
-  : CONSTANTS.FRONTEND_URLS.landing;
+const API_URL = CONSTANTS.BACKEND_URL
+const FRONTEND_URL = CONSTANTS.FRONTEND_URLS.landing
 
 const getFrontendUrls = async () => {
   try {
@@ -100,7 +95,7 @@ export default function App() {
   const [currentDeliveryRequest,   setCurrentDeliveryRequest]   = useState<any>(null);
   
   useEffect(()=>{
-      const getFrontendUrl = async ()=>{
+      const getFrontendUrl = async ()=>{ // even though we have the frotend url set in the constants file, sometimes we could change the frontend url depending on branding or company needs
         const urls = await getFrontendUrls();
         setFrontendUrl(urls['okra-frontend-app'] || FRONTEND_URL)
       }
@@ -240,6 +235,22 @@ export default function App() {
     };
   };
 
+  const showBubbleTemporarily = async () => {
+      try {
+        await FloatingBubbleService.start(); // show the bubble
+
+        setTimeout(async () => {
+         try {
+          await FloatingBubbleService.stop(); // hide after 10s
+        } catch (err) {
+        console.log('Error stopping bubble:', err);
+       }
+      }, 10000); // 10,000ms = 10 seconds
+     } catch (err) {
+      console.log('Error starting bubble:', err);
+     }
+    }
+
   // ─── Accept Ride ─────────────────────────────────────────────────────────
   const handleAcceptRide = async (rideId: string) => {
     logger.info('Accepting ride:', rideId);
@@ -256,7 +267,7 @@ export default function App() {
       logger.info('Ride accepted successfully:', result);
       await FloatingBubbleService.decrementBadge();
       await DeviceSocketService.emit(SOCKET_EVENTS.RIDE.ACCEPTED, { rideId });
-      const urls = await getFrontendUrls();
+      const urls = await getFrontendUrls()
       const userType = currentRideRequest.userType;
       let targetUrl  = '';
       if (userType === 'driver')    targetUrl = urls['okra-driver-app']    || 'http://10.196.215.23:3002';
@@ -307,10 +318,11 @@ export default function App() {
       setIsLoading(true);
       const { deviceId } = await getDeviceInfo();
       // Re-use the same device accept endpoint — pass deliveryId instead of rideId
-      const response = await fetch(`${API_URL}/devices/acceptride/${deviceId}`, {
+      const response = await fetch(`${API_URL}/devices/acceptdelivery/${deviceId}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deliveryId }),
-      });
+      }); // becasue if you accepted the ride straight up, you would be unauthorized, since modal exist outside the frontend which has token
+      console.log('response on deli',response)
       if (!response.ok) throw new Error('Failed to accept delivery');
       await FloatingBubbleService.decrementBadge();
       await DeviceSocketService.emit(SOCKET_EVENTS.DELIVERY.ACCEPTED, { deliveryId });
@@ -400,6 +412,34 @@ export default function App() {
     } catch (error) { logger.error('Error fetching pending ride request:', error); }
   };
 
+  const fetchPendingDeliveryRequest = async () => {
+  try {
+    const { deviceId } = await getDeviceInfo();
+    const response = await fetch(`${API_URL}/devices/pending-delivery/${deviceId}`);
+    const result   = await response.json();
+    if (result.success && result.data?.length > 0) {
+      const pending = result.data[0];
+      setCurrentDeliveryRequest(normalizeDeliveryRequest({
+        deliveryId:    pending.deliveryId,
+        rideCode:      pending.rideCode,
+        senderName:    pending.sender?.name,
+        sender:        pending.sender,
+        pickupLocation:  pending.pickupLocation,
+        dropoffLocation: pending.dropoffLocation,
+        distance:      pending.distance,
+        estimatedFare: pending.estimatedFare,
+        packageType:   pending.package?.packageType,
+        isFragile:     pending.package?.fragile,
+        weightKg:      pending.package?.weight,
+        recipientName: pending.package?.recipientName,
+      }));
+      setShowDeliveryRequestModal(true);
+    }
+  } catch (error) {
+    logger.error('Error fetching pending delivery request:', error);
+  }
+};
+
   // ── Notifications init ──
   useEffect(() => {
     NotificationService.initialize(sendToWebView);
@@ -429,6 +469,7 @@ export default function App() {
   useEffect(() => {
     handleActiveRide();
     fetchPendingRideRequest();
+    fetchPendingDeliveryRequest();
     const unsubscribe = NetInfo.addEventListener(state => {
       setIsConnected(state.isConnected ?? false);
       if (state.isConnected && servicesInitialized && !DeviceSocketService.isConnected()) {
@@ -444,6 +485,7 @@ export default function App() {
       if (appState.match(/inactive|background/) && nextAppState === 'active') {
         handleActiveRide();
         fetchPendingRideRequest();
+        fetchPendingDeliveryRequest();
         if (await FloatingBubbleService.isShowing()) await FloatingBubbleService.stop();
         if (servicesInitialized && !DeviceSocketService.isConnected()) await DeviceSocketService.reconnect();
         sendToWebView({ type: WEBVIEW_EVENTS.APP_RESUMED, payload: {} });
@@ -566,23 +608,9 @@ export default function App() {
     });
 
     DeviceSocketService.on(SOCKET_EVENTS.RIDE.REQUEST_RECEIVED, async (data: any) => {
+      console.log('data from request', data)
       console.log('socketlog- ride:request:received — writing to bridge, rideId:', data?.rideId);
       await AudioService.playAlert('ride_request');
-      const showBubbleTemporarily = async () => {
-      try {
-        await FloatingBubbleService.start(); // show the bubble
-
-        setTimeout(async () => {
-         try {
-          await FloatingBubbleService.stop(); // hide after 10s
-        } catch (err) {
-        console.log('Error stopping bubble:', err);
-       }
-      }, 10000); // 10,000ms = 10 seconds
-     } catch (err) {
-      console.log('Error starting bubble:', err);
-     }
-    }
       showBubbleTemporarily()
       await FloatingBubbleService.incrementBadge();
       await FloatingBubbleService.showRipple();
@@ -659,6 +687,7 @@ export default function App() {
     DeviceSocketService.on(SOCKET_EVENTS.DELIVERY.REQUEST_RECEIVED, async (data: any) => {
       console.log('socketlog- delivery:request:received — writing to bridge, deliveryId:', data?.deliveryId);
       await AudioService.playAlert('ride_request');
+      showBubbleTemporarily()
       await FloatingBubbleService.incrementBadge();
       await FloatingBubbleService.showRipple();
       _bridge.pendingDeliveryRequest = normalizeDeliveryRequest(data);
@@ -824,6 +853,7 @@ const handleRetry = useCallback(() => {
         case 'GO_ONLINE':            response = await handleGoOnline(payload);            break;
         case 'GO_OFFLINE':           response = await handleGoOffline(payload);           break;
         case 'RECONNECT_SOCKET':     response = await handleReconnectSocket(payload);     break;
+        case 'DISCONNECT_SOCKET':     response = await handleDisconnectSocket(payload);     break;
         case 'THEME_MODE_CHANGE':    response = await handleChangeThemeMode(payload);     break;
         default: logger.warn(`Unknown message type: ${type}`); response = { error: 'Unknown message type' };
       }
@@ -891,8 +921,21 @@ const handleRetry = useCallback(() => {
       logger.info('✅ Socket re-initialized successfully');
       return { success: true, deviceId, socketConnected: DeviceSocketService.isConnected() };
     } catch (error: any) { return { success: false, error: error.message }; }
-  };
+  }
 
+const handleDisconnectSocket =  async (payload: any) => {
+    try {
+      const { userId, frontendName } = payload;
+      logger.info(`Socket disconnected for ${frontendName}, user: ${userId}`);
+      DeviceSocketService.disconnect();
+      userIdRef.current       = null;
+      frontendNameRef.current = null;   
+      //setupSocketListeners(deviceId, frontendName);
+      logger.info('✅ Socket re-initialized successfully');
+      return { success: true, socketConnected: DeviceSocketService.isConnected() };
+    } catch (error: any) { return { success: false, error: error.message }; }
+  }
+  
   const handleGoOnline = async (payload: any) => {
     try {
       const location = await LocationService.getCurrentLocation();
@@ -987,7 +1030,7 @@ const handleRetry = useCallback(() => {
   />
       <WebView
         ref={webViewRef}
-        source={{ uri: "https://okratest.online" }}
+        source={{ uri: FRONTEND_URL }}
         onShouldStartLoadWithRequest={(request) => {
         const url = request.url;
         // Handle phone calls
@@ -1050,7 +1093,7 @@ const handleRetry = useCallback(() => {
         onAccept={handleAcceptDelivery}
         onDecline={handleDeclineDelivery}
       />}
-      <PermissionsVideoModal frontendBaseUrl="https://okratest.online" />
+      <PermissionsVideoModal frontendBaseUrl={FRONTEND_URL} />
     </SafeAreaView>
     </LinearGradient>
   );

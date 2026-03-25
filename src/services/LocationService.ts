@@ -4,6 +4,7 @@ import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 import DeviceSocketService from './DeviceSocketService';
 import { logger } from '../utils/logger';
+import { CONSTANTS } from '@utils/constants';
 
 const LOCATION_TASK_NAME = 'background-location-task';
 
@@ -98,7 +99,7 @@ class LocationService {
       if (!intervalOverride) {
         try {
           logger.info('📡 Fetching location update interval from backend...');
-          const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/admn-setting`);
+          const response = await fetch(`${CONSTANTS.BACKEND_URL}/api/admn-setting`);
           if (response.ok) {
             const data = await response.json();
             const intervalSecs = data?.data?.attributes?.getOnlineDriverCurrentLocationCronIntervalInSecs || 10;

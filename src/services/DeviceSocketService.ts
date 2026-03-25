@@ -420,7 +420,7 @@ class DeviceSocketService {
     this.socket.on(S.DELIVERY.SESSION_REPLACED, (data) => {
       console.log('socketlog- delivery:session-replaced:', JSON.stringify(data, null, 2));
       this.triggerEvent(S.DELIVERY.SESSION_REPLACED, data);
-    });
+    })
 
     logger.info('✅ All socket event listeners setup complete');
   }
@@ -503,6 +503,7 @@ class DeviceSocketService {
   disconnect() {
     logger.info('Disconnecting from device socket');
     this.stopHeartbeat();
+    this.eventHandlers.clear()
     if (this.socket) {
       this.socket.close();
       this.socket = null;

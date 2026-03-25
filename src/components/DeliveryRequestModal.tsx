@@ -140,10 +140,13 @@ export const DeliveryRequestModal: React.FC<Props> = ({
     ? Math.round((deliveryRequest.distance / 30) * 60)  // 30 km/h for delivery
     : 0;
 
-  const senderName = deliveryRequest
+  let senderName = deliveryRequest
     ? (deliveryRequest.senderName || deliveryRequest.sender?.name || 'Sender')
     : 'Sender';
-
+  
+  if(senderName === "null null"){
+     senderName = "Sender"
+  }
   const pkgInfo = deliveryRequest?.packageType
     ? (PACKAGE_LABELS[deliveryRequest.packageType] ?? { emoji: '📦', label: deliveryRequest.packageType })
     : { emoji: '📦', label: 'Package' };
