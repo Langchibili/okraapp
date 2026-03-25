@@ -1,6 +1,6 @@
 
 const environment = "local"
-//const environment = "production"
+///const environment = "production"
 export const EXPO_PUBLIC_PROJECT_ID = "9dbb3dbf-f0c1-44fb-86df-e4681a1771cf"
 export const SOCKET_EVENTS = {
   // Connection Events
@@ -281,17 +281,17 @@ export const NATIVE_EVENTS = {
 export const CONSTANTS = {
   APP_NAME:    'OkraApp',
   APP_VERSION: '1.0.0',
-  DEVICE_SOCKET_URL:  environment === "local"? "http://10.196.215.23:3008" : "https://devicesocket.okratest.online",
-  MAIN_SOCKET_URL:    environment === "local"? "http://10.196.215.23:3005" : "https://socket.okratest.online",
-  BACKEND_URL:      environment === "local"? "http://10.196.215.23:1343/api" : "https://backend.okratest.online",
+  DEVICE_SOCKET_URL:  environment === "local"? "http://172.31.156.23:3008" : "https://devicesocket.okratest.online",
+  MAIN_SOCKET_URL:    environment === "local"? "http://172.31.156.23:3005" : "https://socket.okratest.online",
+  BACKEND_URL:      environment === "local"? "http://172.31.156.23:1343/api" : "https://backend.okratest.online",
 
   FRONTEND_URLS: {
-    landing:   environment === "local"? "http://10.196.215.23:3000" : "https://okratest.online",
-    rider:     environment === "local"? "http://10.196.215.23:3001" : "https://rider.okratest.online",
-    driver:    environment === "local"? "http://10.196.215.23:3002" : "https://driver.okratest.online",
-    delivery:  environment === "local"? "http://10.196.215.23:3003" : "https://delivery.okratest.online",
-    admin:     environment === "local"? "http://10.196.215.23:3007" : "https://admin.okratest.online",
-    conductor: environment === "local"? "http://10.196.215.23:3004" : "https://socket.okratest.online",
+    landing:   environment === "local"? "http://172.31.156.23:3000" : "https://okratest.online",
+    rider:     environment === "local"? "http://172.31.156.23:3001" : "https://rider.okratest.online",
+    driver:    environment === "local"? "http://172.31.156.23:3002" : "https://driver.okratest.online",
+    delivery:  environment === "local"? "http://172.31.156.23:3003" : "https://delivery.okratest.online",
+    admin:     environment === "local"? "http://172.31.156.23:3007" : "https://admin.okratest.online",
+    conductor: environment === "local"? "http://172.31.156.23:3004" : "https://socket.okratest.online",
     
   },
 

@@ -464,6 +464,20 @@ class DeviceSocketService {
     };
   }
 
+  off(event: string, handler?: EventHandler): void {
+    if (!handler) {
+      // No handler specified — remove ALL listeners for this event
+      this.eventHandlers.delete(event);
+      return;
+    }
+    // Remove specific handler
+    this.eventHandlers.get(event)?.delete(handler);
+    // Clean up empty sets
+    if (this.eventHandlers.get(event)?.size === 0) {
+      this.eventHandlers.delete(event);
+    }
+  }
+  
   private triggerEvent(event: string, data: any) {
     const handlers = this.eventHandlers.get(event);
     if (handlers) {
