@@ -99,7 +99,7 @@ class LocationService {
       if (!intervalOverride) {
         try {
           logger.info('📡 Fetching location update interval from backend...');
-          const response = await fetch(`${CONSTANTS.BACKEND_URL}/api/admn-setting`);
+          const response = await fetch(`${CONSTANTS.BACKEND_URL}/admn-setting`);
           if (response.ok) {
             const data = await response.json();
             const intervalSecs = data?.data?.attributes?.getOnlineDriverCurrentLocationCronIntervalInSecs || 10;

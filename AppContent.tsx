@@ -608,7 +608,7 @@ export default function AppContent() {
       const hasPermission = await PermissionManager.checkDrawOverPermission();
       if (hasPermission) await BackgroundService.showRideRequest(data);
       sendToWebView({ type: WEBVIEW_EVENTS.RIDE_REQUEST_NEW, payload: data });
-    });
+    })
 
     DeviceSocketService.on(SOCKET_EVENTS.RIDE.REQUEST_RECEIVED, async (data: any) => {
       if(frontendNameRef.current === "rider"){
@@ -1088,10 +1088,10 @@ const handleRetry = useCallback(() => {
   if (is404) {
     return (
       <View style={styles.errorContainer}>
-        <Text style={styles.errorTitle}>🔍 404</Text>
-        <Text style={styles.errorText}>Page not found</Text>
+        <Text style={styles.errorTitle}>🔍 Sorry</Text>
+        <Text style={styles.errorText}>Screen not found</Text>
         <Text style={styles.errorSubtext}>
-          The requested URL could not be found on this server.
+          The requested screen could not be found on this app.
         </Text>
         <TouchableOpacity
           style={styles.retryButton}
@@ -1108,12 +1108,12 @@ const handleRetry = useCallback(() => {
 
   if (hasError) {
     return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorTitle}>😔 Oops!</Text>
-        <Text style={styles.errorText}>Something went wrong loading the app.</Text>
-        <Text style={styles.errorSubtext}>Please check your internet connection and try again.</Text>
-      </View>
-    );
+     <OfflineScreen
+      onRetry={() => {
+        webViewRef.current?.reload();
+      }}
+    />
+    )
   }
 
   if (!isConnected) {
@@ -1123,7 +1123,7 @@ const handleRetry = useCallback(() => {
         webViewRef.current?.reload();
       }}
     />
-    );
+    )
   }
   
 
