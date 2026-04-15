@@ -4,138 +4,140 @@ import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.PixelFormat
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.text.TextUtils
 import android.util.Log
 import android.view.*
-import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.TextView
+import android.widget.*
 import androidx.core.app.NotificationCompat
+import org.json.JSONObject
 
 class FloatingBubbleService : Service() {
 
     private var windowManager: WindowManager? = null
     private var floatingView: View? = null
-    private var dismissView: View? = null
-    private var bubbleIcon: ImageView? = null
-    private var notificationBadge: TextView? = null
-    private var rippleView: View? = null
-
     private var isShowing = false
-    private var isDismissVisible = false
-    private var initialX = 0
-    private var initialY = 0
-    private var initialTouchX = 0f
-    private var initialTouchY = 0f
+    private var pendingBadgeCount = 0
 
     private val handler = Handler(Looper.getMainLooper())
-
-    // Auto-fade after 1 minute of inactivity
     private var fadeRunnable: Runnable? = null
-    private val FADE_DELAY_MS = 60 * 1000L  // 1 minute
+
+    // Fade to IDLE_ALPHA after 1 minute of no activity
+    private val FADE_DELAY_MS = 60 * 1000L
     private val IDLE_ALPHA = 0.35f
 
     companion object {
         private const val TAG = "FloatingBubbleService"
-        const val ACTION_START = "ACTION_START"
-        const val ACTION_STOP = "ACTION_STOP"
-        const val ACTION_UPDATE_BADGE = "ACTION_UPDATE_BADGE"
-        const val ACTION_SHOW_RIPPLE = "ACTION_SHOW_RIPPLE"
-        const val ACTION_APP_FOREGROUND = "ACTION_APP_FOREGROUND"
-        const val ACTION_APP_BACKGROUND = "ACTION_APP_BACKGROUND"
-        const val EXTRA_BADGE_COUNT = "EXTRA_BADGE_COUNT"
-        const val CHANNEL_ID = "floating_bubble_channel"
-        const val NOTIFICATION_ID = 1001
+
+        const val ACTION_START             = "ACTION_START"
+        const val ACTION_STOP              = "ACTION_STOP"
+        const val ACTION_UPDATE_BADGE      = "ACTION_UPDATE_BADGE"
+        const val ACTION_SHOW_RIPPLE       = "ACTION_SHOW_RIPPLE"
+        const val ACTION_APP_FOREGROUND    = "ACTION_APP_FOREGROUND"
+        const val ACTION_APP_BACKGROUND    = "ACTION_APP_BACKGROUND"
+        // New: delivers ride/delivery JSON to the card
+        const val ACTION_SHOW_RIDE_CARD    = "ACTION_SHOW_RIDE_CARD"
+
+        const val EXTRA_BADGE_COUNT        = "EXTRA_BADGE_COUNT"
+        const val EXTRA_RIDE_JSON          = "EXTRA_RIDE_JSON"
+
+        const val CHANNEL_ID               = "floating_bubble_channel"
+        const val NOTIFICATION_ID          = 1001
 
         private var instance: FloatingBubbleService? = null
 
         fun isRunning(): Boolean = instance != null
 
         fun start(context: Context) {
-            Log.d(TAG, "🔵 start() called")
-            val intent = Intent(context, FloatingBubbleService::class.java).apply {
+            dispatch(context, Intent(context, FloatingBubbleService::class.java).apply {
                 action = ACTION_START
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-                Log.d(TAG, "Started foreground service")
-            } else {
-                context.startService(intent)
-                Log.d(TAG, "Started service")
-            }
+            })
         }
 
         fun stop(context: Context) {
-            Log.d(TAG, "🛑 stop() called")
-            val intent = Intent(context, FloatingBubbleService::class.java).apply {
+            context.startService(Intent(context, FloatingBubbleService::class.java).apply {
                 action = ACTION_STOP
-            }
-            context.startService(intent)
+            })
         }
 
         fun updateBadge(context: Context, count: Int) {
-            Log.d(TAG, "📊 updateBadge() called with count: $count")
-            val intent = Intent(context, FloatingBubbleService::class.java).apply {
+            context.startService(Intent(context, FloatingBubbleService::class.java).apply {
                 action = ACTION_UPDATE_BADGE
                 putExtra(EXTRA_BADGE_COUNT, count)
-            }
-            context.startService(intent)
+            })
         }
 
         fun showRipple(context: Context) {
-            Log.d(TAG, "💫 showRipple() called")
-            val intent = Intent(context, FloatingBubbleService::class.java).apply {
+            context.startService(Intent(context, FloatingBubbleService::class.java).apply {
                 action = ACTION_SHOW_RIPPLE
-            }
-            context.startService(intent)
+            })
+        }
+
+        /**
+         * Show (or refresh) the floating card with ride/delivery details.
+         * rideJson — a JSON string with the ride or delivery payload.
+         */
+        fun showRideCard(context: Context, rideJson: String) {
+            dispatch(context, Intent(context, FloatingBubbleService::class.java).apply {
+                action = ACTION_SHOW_RIDE_CARD
+                putExtra(EXTRA_RIDE_JSON, rideJson)
+            })
         }
 
         fun notifyAppForeground(context: Context) {
-            Log.d(TAG, "📱 notifyAppForeground() called")
-            val intent = Intent(context, FloatingBubbleService::class.java).apply {
+            context.startService(Intent(context, FloatingBubbleService::class.java).apply {
                 action = ACTION_APP_FOREGROUND
-            }
-            context.startService(intent)
+            })
         }
 
         fun notifyAppBackground(context: Context) {
-            Log.d(TAG, "📱 notifyAppBackground() called")
-            val intent = Intent(context, FloatingBubbleService::class.java).apply {
+            dispatch(context, Intent(context, FloatingBubbleService::class.java).apply {
                 action = ACTION_APP_BACKGROUND
+            })
+        }
+
+        private fun dispatch(context: Context, intent: Intent) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
             }
-            context.startService(intent)
         }
     }
 
+    // ─── Lifecycle ────────────────────────────────────────────────────────────
+
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "✅ onCreate() called")
+        Log.d(TAG, "✅ onCreate()")
         instance = this
         createNotificationChannel()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        Log.d(TAG, "WindowManager initialized")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "⚡ onStartCommand() called with action: ${intent?.action}")
+        Log.d(TAG, "⚡ onStartCommand: ${intent?.action}")
 
-        // Always call startForeground first on Android 8+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForeground(NOTIFICATION_ID, createNotification())
         }
 
         when (intent?.action) {
-            ACTION_START -> showFloatingBubble()
+
+            ACTION_START -> {
+                // Start without ride data (generic "you're online" card)
+                showFloatingCard(null)
+            }
 
             ACTION_STOP -> {
-                Log.d(TAG, "🛑 Stopping service...")
-                hideFloatingBubble()
-                hideDismissZone()
+                hideCard()
                 cancelFadeTimer()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
@@ -147,25 +149,36 @@ class FloatingBubbleService : Service() {
             }
 
             ACTION_UPDATE_BADGE -> {
-                val count = intent.getIntExtra(EXTRA_BADGE_COUNT, 0)
-                Log.d(TAG, "📊 Updating badge to: $count")
-                updateBadgeCount(count)
+                pendingBadgeCount = intent.getIntExtra(EXTRA_BADGE_COUNT, 0)
+                Log.d(TAG, "📊 Badge count: $pendingBadgeCount")
             }
 
-            ACTION_SHOW_RIPPLE -> animateRipple()
+            ACTION_SHOW_RIPPLE -> {
+                // Wake card back to full opacity & reset fade
+                scheduleFade()
+                handler.post { floatingView?.animate()?.alpha(1f)?.setDuration(250)?.start() }
+            }
+
+            ACTION_SHOW_RIDE_CARD -> {
+                val json = intent.getStringExtra(EXTRA_RIDE_JSON)
+                // Rebuild card so new ride details are shown
+                if (isShowing) hideCard()
+                showFloatingCard(json)
+            }
 
             ACTION_APP_FOREGROUND -> {
-                Log.d(TAG, "📱 App in foreground - hiding bubble")
+                // App is visible — hide the overlay
                 handler.post { floatingView?.visibility = View.GONE }
                 cancelFadeTimer()
             }
 
             ACTION_APP_BACKGROUND -> {
-                Log.d(TAG, "📱 App in background - showing bubble")
+                // App went to background — reveal the overlay
                 handler.post { floatingView?.visibility = View.VISIBLE }
                 scheduleFade()
             }
         }
+
         return START_STICKY
     }
 
@@ -173,425 +186,429 @@ class FloatingBubbleService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.d(TAG, "💀 onDestroy() called")
-        hideFloatingBubble()
-        hideDismissZone()
+        hideCard()
         cancelFadeTimer()
         instance = null
+        Log.d(TAG, "💀 onDestroy()")
     }
 
-    // ─── Notification channel & notification ─────────────────────────────────
+    // ─── Notification (keeps service alive) ───────────────────────────────────
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Floating Bubble",
-                NotificationManager.IMPORTANCE_LOW
+            val ch = NotificationChannel(
+                CHANNEL_ID, "Floating Bubble", NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Keeps the floating bubble active"
+                description = "Keeps the floating card active"
                 setShowBadge(false)
             }
-            val notificationManager = getSystemService(NotificationManager::class.java)
-            notificationManager?.createNotificationChannel(channel)
-            Log.d(TAG, "Notification channel created")
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
         }
     }
 
     private fun createNotification(): Notification {
-        val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
-        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        val piFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        } else {
-            PendingIntent.FLAG_UPDATE_CURRENT
-        }
-        val pendingIntent = PendingIntent.getActivity(this, 0, intent, pendingIntentFlags)
+        else PendingIntent.FLAG_UPDATE_CURRENT
+        val pi = PendingIntent.getActivity(this, 0, launchIntent, piFlags)
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("You're Online")
             .setContentText("Tap to open OkraRides")
             .setSmallIcon(applicationInfo.icon)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(pi)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .build()
     }
 
-    // ─── Fade timer ───────────────────────────────────────────────────────────
+    // ─── Idle-fade timer ──────────────────────────────────────────────────────
 
     private fun scheduleFade() {
         cancelFadeTimer()
         handler.post { floatingView?.alpha = 1f }
-
         fadeRunnable = Runnable {
             handler.post {
                 floatingView?.animate()
                     ?.alpha(IDLE_ALPHA)
                     ?.setDuration(1500)
                     ?.start()
-                Log.d(TAG, "💤 Bubble faded to idle opacity after 1 min")
+                Log.d(TAG, "💤 Card faded to idle after 1 min")
             }
         }
         handler.postDelayed(fadeRunnable!!, FADE_DELAY_MS)
-        Log.d(TAG, "⏱ Fade timer scheduled for ${FADE_DELAY_MS / 1000}s")
     }
 
     private fun cancelFadeTimer() {
         fadeRunnable?.let {
             handler.removeCallbacks(it)
             fadeRunnable = null
-            Log.d(TAG, "⏱ Fade timer cancelled")
         }
     }
 
-    // ─── Dismiss zone (Facebook Messenger style X at bottom centre) ───────────
+    // ─── Core: show/hide ──────────────────────────────────────────────────────
 
-    private fun showDismissZone() {
-        if (isDismissVisible) return
-
-        val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
+    private fun showFloatingCard(rideJson: String?) {
+        if (isShowing) {
+            Log.d(TAG, "Card already showing — skipping")
+            return
         }
-
-        val density = resources.displayMetrics.density
-        val dismissSize = (72 * density).toInt()
-
-        dismissView = FrameLayout(this).apply {
-            val circle = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#CC000000"))
-                setStroke((2 * density).toInt(), Color.WHITE)
-            }
-            background = circle
-            alpha = 0.6f
-
-            val xText = TextView(context).apply {
-                text = "✕"
-                textSize = 20f
-                setTextColor(Color.WHITE)
-                gravity = android.view.Gravity.CENTER
-                layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT
-                )
-            }
-            addView(xText)
-        }
-
-        val params = WindowManager.LayoutParams(
-            dismissSize,
-            dismissSize,
-            layoutFlag,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
-            y = (48 * density).toInt()
-        }
-
-        windowManager?.addView(dismissView, params)
-        isDismissVisible = true
-        Log.d(TAG, "Dismiss zone shown")
-    }
-
-    private fun hideDismissZone() {
-        if (!isDismissVisible || dismissView == null) return
-        try {
-            windowManager?.removeView(dismissView)
-            dismissView = null
-            isDismissVisible = false
-            Log.d(TAG, "Dismiss zone hidden")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error hiding dismiss zone", e)
-        }
-    }
-
-    // Uses raw screen coordinates — works correctly with TOP|START gravity
-    private fun isOverDismissZone(rawX: Float, rawY: Float): Boolean {
-        val density = resources.displayMetrics.density
-        val screenWidth = resources.displayMetrics.widthPixels
-        val screenHeight = resources.displayMetrics.heightPixels
-        val dismissRadius = 72 * density
-        val dismissX = screenWidth / 2f
-        val dismissY = screenHeight - (120 * density)
-
-        val distance = Math.sqrt(
-            ((rawX - dismissX) * (rawX - dismissX) +
-             (rawY - dismissY) * (rawY - dismissY)).toDouble()
-        )
-        return distance < dismissRadius
-    }
-
-    // ─── Main bubble ──────────────────────────────────────────────────────────
-
-    private fun showFloatingBubble() {
-        Log.d(TAG, "🎈 showFloatingBubble() called, isShowing: $isShowing")
-        if (isShowing) return
+        Log.d(TAG, "🃏 showFloatingCard()")
 
         try {
-            floatingView = createFloatingBubbleView()
+            floatingView = buildCardView(rideJson)
 
-            val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            } else {
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE
-            }
+            else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
 
-            val density = resources.displayMetrics.density
+            val d = resources.displayMetrics.density
             val screenWidth = resources.displayMetrics.widthPixels
-            val screenHeight = resources.displayMetrics.heightPixels
-            val bubbleSize = (64 * density).toInt()
-            val rightMargin = (16 * density).toInt()
-            val bottomMargin = (160 * density).toInt()
+
+            // Card width = screen width minus 5 dp on each side
+            val cardWidth = screenWidth - (10 * d).toInt()
 
             val params = WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
+                cardWidth,
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 layoutFlag,
+                // FLAG_NOT_FOCUSABLE: no keyboard, but touch/click still works on child views
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                 PixelFormat.TRANSLUCENT
             ).apply {
-                // TOP|START gravity: x/y always measure from top-left — drag math is intuitive
-                gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                // Initial position: bottom-right corner
-                x = screenWidth - bubbleSize - rightMargin
-                y = screenHeight - bubbleSize - bottomMargin
+                // Centre the card both horizontally and vertically on screen
+                gravity = Gravity.CENTER
             }
 
             windowManager?.addView(floatingView, params)
             isShowing = true
-            Log.d(TAG, "✅ Bubble added to window at bottom-right")
+            Log.d(TAG, "✅ Floating card added to window")
 
-            setupTouchListener(params)
-            setupClickListener()
-
-            // Start the idle fade timer
             scheduleFade()
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error showing floating bubble", e)
+            Log.e(TAG, "❌ Error showing card", e)
             isShowing = false
         }
     }
 
-    private fun createFloatingBubbleView(): View {
-        val density = resources.displayMetrics.density
-        val bubbleSize = (64 * density).toInt()
-        val iconSize = (56 * density).toInt()
-        val badgeSize = (24 * density).toInt()
-
-        val container = FrameLayout(this).apply {
-            layoutParams = ViewGroup.LayoutParams(bubbleSize, bubbleSize)
-        }
-
-        // Ripple ring — sits behind the icon
-        rippleView = View(this).apply {
-            layoutParams = FrameLayout.LayoutParams(bubbleSize, bubbleSize).apply {
-                gravity = android.view.Gravity.CENTER
-            }
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#80FF6B00"))
-            }
-            visibility = View.GONE
-        }
-        container.addView(rippleView)
-
-        // App icon bubble
-        bubbleIcon = ImageView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(iconSize, iconSize).apply {
-                gravity = android.view.Gravity.CENTER
-            }
-            setImageDrawable(packageManager.getApplicationIcon(applicationInfo))
-            elevation = 8f
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#FF6B00"))
-            }
-            setPadding(8, 8, 8, 8)
-            outlineProvider = object : ViewOutlineProvider() {
-                override fun getOutline(view: View, outline: android.graphics.Outline) {
-                    outline.setOval(0, 0, view.width, view.height)
-                }
-            }
-            clipToOutline = true
-        }
-        container.addView(bubbleIcon)
-
-        // Notification badge (top-right corner)
-        notificationBadge = TextView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(badgeSize, badgeSize).apply {
-                gravity = android.view.Gravity.TOP or android.view.Gravity.END
-            }
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.RED)
-            }
-            gravity = android.view.Gravity.CENTER
-            textSize = 10f
-            setTextColor(Color.WHITE)
-            text = "1"
-            visibility = View.GONE
-            elevation = 10f
-        }
-        container.addView(notificationBadge)
-
-        return container
-    }
-
-    private fun setupTouchListener(params: WindowManager.LayoutParams) {
-        floatingView?.setOnTouchListener { view, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    initialX = params.x
-                    initialY = params.y
-                    initialTouchX = event.rawX
-                    initialTouchY = event.rawY
-                    showDismissZone()
-                    cancelFadeTimer()
-                    handler.post { floatingView?.alpha = 1f }
-                    true
-                }
-
-                MotionEvent.ACTION_MOVE -> {
-                    // TOP|START gravity: simple offset from finger delta — no inversion needed
-                    params.x = initialX + (event.rawX - initialTouchX).toInt()
-                    params.y = initialY + (event.rawY - initialTouchY).toInt()
-                    windowManager?.updateViewLayout(floatingView, params)
-
-                    // Use raw finger position to check dismiss zone
-                    val overDismiss = isOverDismissZone(event.rawX, event.rawY)
-                    dismissView?.alpha = if (overDismiss) 1f else 0.6f
-                    true
-                }
-
-                MotionEvent.ACTION_UP -> {
-                    hideDismissZone()
-
-                    // Check dismiss using raw finger position
-                    if (isOverDismissZone(event.rawX, event.rawY)) {
-                        Log.d(TAG, "Bubble dragged to dismiss zone - hiding")
-                        cancelFadeTimer()
-                        hideFloatingBubble()
-                        return@setOnTouchListener true
-                    }
-
-                    // Snap to nearest left or right edge
-                    val screenWidth = resources.displayMetrics.widthPixels
-                    val density = resources.displayMetrics.density
-                    val edgeMargin = (16 * density).toInt()
-
-                    params.x = if (params.x + view.width / 2 > screenWidth / 2) {
-                        screenWidth - view.width - edgeMargin   // snap to right edge
-                    } else {
-                        edgeMargin                              // snap to left edge
-                    }
-                    windowManager?.updateViewLayout(floatingView, params)
-
-                    // Restart idle fade timer after drag ends
-                    scheduleFade()
-
-                    // Detect tap vs drag
-                    val dx = event.rawX - initialTouchX
-                    val dy = event.rawY - initialTouchY
-                    if (dx * dx + dy * dy < 100) {
-                        view.performClick()
-                    }
-                    true
-                }
-
-                else -> false
-            }
-        }
-    }
-
-    private fun setupClickListener() {
-        floatingView?.setOnClickListener {
-            Log.d(TAG, "Bubble clicked - opening app")
-            val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-            }
-            startActivity(intent)
-        }
-    }
-
-    private fun hideFloatingBubble() {
+    private fun hideCard() {
         if (floatingView != null && isShowing) {
             try {
                 windowManager?.removeView(floatingView)
-                floatingView = null
-                isShowing = false
-                Log.d(TAG, "✅ Bubble hidden")
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Error hiding bubble", e)
+                Log.e(TAG, "❌ Error removing card view", e)
             }
+            floatingView = null
+            isShowing = false
+            Log.d(TAG, "✅ Card hidden")
         }
     }
 
-    private fun updateBadgeCount(count: Int) {
-        handler.post {
-            notificationBadge?.apply {
-                if (count > 0) {
-                    visibility = View.VISIBLE
-                    text = if (count > 9) "9+" else count.toString()
-                    Log.d(TAG, "Badge visible: $text")
-                } else {
-                    visibility = View.GONE
-                    Log.d(TAG, "Badge hidden")
+    // ─── Card view builder ────────────────────────────────────────────────────
+
+    private fun buildCardView(rideJson: String?): View {
+        val d = resources.displayMetrics.density
+
+        // ── Parse ride data ────────────────────────────────────────────────────
+        var isDelivery    = false
+        var rideCode      = ""
+        var riderName     = ""
+        var pickupAddress = "Pickup location"
+        var dropAddress   = "Dropoff location"
+        var fare          = 0.0
+        var dist          = 0.0
+
+        rideJson?.let {
+            try {
+                val json = JSONObject(it)
+                isDelivery    = json.optString("type") == "delivery_request"
+                rideCode      = json.optString("rideCode", "")
+                riderName     = json.optString(if (isDelivery) "senderName" else "riderName", "")
+                fare          = json.optDouble("estimatedFare", 0.0)
+                dist          = json.optDouble("distance", 0.0)
+
+                val pickup  = json.optJSONObject("pickupLocation")
+                pickupAddress = pickup?.optString("address")
+                    ?: json.optString("pickupAddress", "Pickup location")
+
+                val dropoff = json.optJSONObject("dropoffLocation")
+                dropAddress   = dropoff?.optString("address")
+                    ?: json.optString("dropoffAddress", "Dropoff location")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "JSON parse error", e)
+            }
+        }
+
+        // ── Root card ──────────────────────────────────────────────────────────
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                shape      = GradientDrawable.RECTANGLE
+                setColor(Color.WHITE)
+                cornerRadius = 22 * d
+            }
+            elevation       = 28f
+            clipToOutline   = true
+            outlineProvider = ViewOutlineProvider.BACKGROUND
+            setPadding(
+                (18 * d).toInt(), (18 * d).toInt(),
+                (18 * d).toInt(), (20 * d).toInt()
+            )
+        }
+
+        // ── Top row: centred app icon + close button overlaid ──────────────────
+        val topFrame = FrameLayout(this).apply {
+            layoutParams = lp(w = LinearLayout.LayoutParams.MATCH_PARENT, bottomMargin = (14 * d).toInt())
+        }
+
+        // Small circular app icon, centred
+        val iconPx = (34 * d).toInt()
+        ImageView(this).apply {
+            layoutParams  = FrameLayout.LayoutParams(iconPx, iconPx, Gravity.CENTER_HORIZONTAL)
+            try { setImageDrawable(packageManager.getApplicationIcon(applicationInfo)) } catch (_: Exception) {}
+            setPadding(5, 5, 5, 5)
+            background    = ovalDrawable("#FF6B00")
+            clipToOutline = true
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, out: Outline) = out.setOval(0, 0, view.width, view.height)
+            }
+        }.also { topFrame.addView(it) }
+
+        // Close (✕) button, top-right
+        val closePx = (28 * d).toInt()
+        TextView(this).apply {
+            layoutParams  = FrameLayout.LayoutParams(closePx, closePx, Gravity.END or Gravity.TOP)
+            text          = "✕"
+            textSize      = 11f
+            setTextColor(Color.parseColor("#999999"))
+            gravity       = Gravity.CENTER
+            background    = ovalDrawable("#F0F0F0")
+            setOnClickListener {
+                cancelFadeTimer()
+                hideCard()
+            }
+        }.also { topFrame.addView(it) }
+
+        card.addView(topFrame)
+
+        // ── Orange header badge ────────────────────────────────────────────────
+        val headerText = if (isDelivery) "📦  NEW DELIVERY REQUEST" else "🚗  NEW RIDE REQUEST"
+        TextView(this).apply {
+            text      = headerText
+            textSize  = 13f
+            setTextColor(Color.WHITE)
+            gravity   = Gravity.CENTER
+            typeface  = Typeface.DEFAULT_BOLD
+            background = pillDrawable("#FF6B00", 24 * d)
+            setPadding((14 * d).toInt(), (10 * d).toInt(), (14 * d).toInt(), (10 * d).toInt())
+            layoutParams = lp(
+                w           = LinearLayout.LayoutParams.MATCH_PARENT,
+                bottomMargin = if (rideCode.isNotEmpty()) (6 * d).toInt() else (14 * d).toInt()
+            )
+        }.also { card.addView(it) }
+
+        // Ride / delivery code
+        if (rideCode.isNotEmpty()) {
+            TextView(this).apply {
+                text     = rideCode
+                textSize = 11f
+                setTextColor(Color.parseColor("#BBBBBB"))
+                gravity  = Gravity.CENTER
+                layoutParams = lp(w = LinearLayout.LayoutParams.MATCH_PARENT, bottomMargin = (14 * d).toInt())
+            }.also { card.addView(it) }
+        }
+
+        // ── Divider ────────────────────────────────────────────────────────────
+        card.addView(divider(d))
+
+        // ── Rider / sender name ────────────────────────────────────────────────
+        LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity     = Gravity.CENTER_VERTICAL
+            layoutParams = lp(w = LinearLayout.LayoutParams.MATCH_PARENT,
+                topMargin = (13 * d).toInt(), bottomMargin = (13 * d).toInt())
+        }.also { row ->
+            TextView(this).apply {
+                text     = if (isDelivery) "📦" else "👤"
+                textSize = 18f
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { rightMargin = (10 * d).toInt() }
+            }.also { row.addView(it) }
+
+            TextView(this).apply {
+                text     = riderName.ifEmpty { if (isDelivery) "Sender" else "Rider" }
+                textSize = 15f
+                setTextColor(Color.parseColor("#1A1A1A"))
+                typeface = Typeface.DEFAULT_BOLD
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }.also { row.addView(it) }
+
+            card.addView(row)
+        }
+
+        // ── Divider ────────────────────────────────────────────────────────────
+        card.addView(divider(d))
+
+        // ── Route: pickup → connector → dropoff ────────────────────────────────
+        LinearLayout(this).apply {
+            orientation  = LinearLayout.VERTICAL
+            layoutParams = lp(w = LinearLayout.LayoutParams.MATCH_PARENT,
+                topMargin = (14 * d).toInt(), bottomMargin = (14 * d).toInt())
+        }.also { col ->
+            col.addView(addressRow(d, "📍", pickupAddress))
+
+            // Thin vertical connector line
+            View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    (2 * d).toInt(), (18 * d).toInt()
+                ).apply {
+                    leftMargin   = (9 * d).toInt()
+                    topMargin    = (3 * d).toInt()
+                    bottomMargin = (3 * d).toInt()
                 }
+                setBackgroundColor(Color.parseColor("#E0E0E0"))
+            }.also { col.addView(it) }
+
+            col.addView(addressRow(d, "🎯", dropAddress))
+            card.addView(col)
+        }
+
+        // ── Divider ────────────────────────────────────────────────────────────
+        card.addView(divider(d))
+
+        // ── Fare + Distance ────────────────────────────────────────────────────
+        LinearLayout(this).apply {
+            orientation  = LinearLayout.HORIZONTAL
+            gravity      = Gravity.CENTER_VERTICAL
+            layoutParams = lp(w = LinearLayout.LayoutParams.MATCH_PARENT,
+                topMargin = (13 * d).toInt(), bottomMargin = (13 * d).toInt())
+        }.also { row ->
+            TextView(this).apply {
+                text     = "💰  K${"%.2f".format(fare)}"
+                textSize = 15f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.parseColor("#1A1A1A"))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }.also { row.addView(it) }
+
+            TextView(this).apply {
+                text     = "${"%.1f".format(dist)} km  📏"
+                textSize = 14f
+                setTextColor(Color.parseColor("#666666"))
+                gravity  = Gravity.END
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }.also { row.addView(it) }
+
+            card.addView(row)
+        }
+
+        // ── Divider ────────────────────────────────────────────────────────────
+        card.addView(divider(d))
+
+        // ── Single CTA — opens the app so the in-app modal handles accept/decline ─
+        val ctaLabel = if (isDelivery) "Tap to Accept or Decline Delivery" else "Tap to Accept or Decline Ride"
+        TextView(this).apply {
+            text     = ctaLabel
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            gravity  = Gravity.CENTER
+            background = pillDrawable("#FF6B00", 14 * d)
+            setPadding((16 * d).toInt(), (16 * d).toInt(), (16 * d).toInt(), (16 * d).toInt())
+            layoutParams = lp(
+                w            = LinearLayout.LayoutParams.MATCH_PARENT,
+                topMargin    = (16 * d).toInt(),
+                bottomMargin = (6 * d).toInt()
+            )
+            setOnClickListener { openApp() }
+        }.also { card.addView(it) }
+
+        return card
+    }
+
+    // ─── Helper: open main app activity ──────────────────────────────────────
+
+    private fun openApp() {
+        try {
+            val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             }
+            intent?.let { startActivity(it) }
+            Log.d(TAG, "✅ App opened from floating card button")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error opening app", e)
         }
     }
 
-    // ─── Ripple animation ─────────────────────────────────────────────────────
+    // ─── View helpers ─────────────────────────────────────────────────────────
 
-    private fun animateRipple() {
-        // Restore full opacity and reset fade timer on every new request
-        scheduleFade()
-
-        handler.post {
-            rippleView?.apply {
-                visibility = View.VISIBLE
-                alpha = 0.8f
-                scaleX = 1f
-                scaleY = 1f
-
-                animate()
-                    .alpha(0f)
-                    .scaleX(2.2f)
-                    .scaleY(2.2f)
-                    .setDuration(800)
-                    .withEndAction {
-                        visibility = View.GONE
-                        // Two follow-up pulses for urgency
-                        handler.postDelayed({ animateRippleOnce() }, 200)
-                        handler.postDelayed({ animateRippleOnce() }, 700)
-                    }
-                    .start()
-            }
+    private fun addressRow(d: Float, icon: String, address: String): LinearLayout =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity     = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            TextView(this@FloatingBubbleService).apply {
+                text     = icon
+                textSize = 14f
+                gravity  = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(
+                    (22 * d).toInt(), LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { rightMargin = (8 * d).toInt() }
+            }.also { addView(it) }
+            TextView(this@FloatingBubbleService).apply {
+                text     = address
+                textSize = 13f
+                setTextColor(Color.parseColor("#333333"))
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }.also { addView(it) }
         }
+
+    private fun divider(d: Float): View = View(this).apply {
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, (1 * d).toInt()
+        ).apply { topMargin = (4 * d).toInt(); bottomMargin = (4 * d).toInt() }
+        setBackgroundColor(Color.parseColor("#F0F0F0"))
     }
 
-    private fun animateRippleOnce() {
-        rippleView?.apply {
-            visibility = View.VISIBLE
-            alpha = 0.8f
-            scaleX = 1f
-            scaleY = 1f
-            animate()
-                .alpha(0f)
-                .scaleX(2.2f)
-                .scaleY(2.2f)
-                .setDuration(800)
-                .withEndAction { visibility = View.GONE }
-                .start()
-        }
+    /** Shorthand LayoutParams for a LinearLayout child */
+    private fun lp(
+        w: Int = LinearLayout.LayoutParams.WRAP_CONTENT,
+        h: Int = LinearLayout.LayoutParams.WRAP_CONTENT,
+        topMargin: Int = 0,
+        bottomMargin: Int = 0
+    ) = LinearLayout.LayoutParams(w, h).apply {
+        this.topMargin    = topMargin
+        this.bottomMargin = bottomMargin
     }
+
+    private fun ovalDrawable(hex: String) = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(Color.parseColor(hex))
+    }
+
+    private fun pillDrawable(hex: String, radius: Float) = GradientDrawable().apply {
+        shape        = GradientDrawable.RECTANGLE
+        setColor(Color.parseColor(hex))
+        cornerRadius = radius
+    }
+
+    private fun borderedPillDrawable(fill: String, stroke: String, radius: Float, strokeWidth: Int) =
+        GradientDrawable().apply {
+            shape        = GradientDrawable.RECTANGLE
+            setColor(Color.parseColor(fill))
+            cornerRadius = radius
+            setStroke(strokeWidth, Color.parseColor(stroke))
+        }
 }

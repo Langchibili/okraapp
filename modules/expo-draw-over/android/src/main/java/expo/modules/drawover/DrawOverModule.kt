@@ -62,6 +62,10 @@ class DrawOverModule : Module() {
             FloatingBubbleService.showRipple(appContext.reactContext!!)
             true
         }
+        AsyncFunction("showRideCard") { json: String ->
+            FloatingBubbleService.showRideCard(appContext.reactContext!!, json)
+            true
+        }
         Function("notifyAppForeground") {
             FloatingBubbleService.notifyAppForeground(appContext.reactContext!!)
             true

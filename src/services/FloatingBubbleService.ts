@@ -1,119 +1,227 @@
 // OkraApp\src\services\FloatingBubbleService.ts
-import { NativeModules, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { logger } from '../utils/logger';
-// ✅ CORRECT
 import DrawOverNativeModule from '../../modules/expo-draw-over';
 
-// const { DrawOverNativeModule } = NativeModules;
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface RideCardData {
+  rideId?: number | string;
+  rideCode?: string;
+  riderName?: string;
+  pickupAddress?: string;
+  dropoffAddress?: string;
+  estimatedFare?: number;
+  distance?: number;
+  pickupLocation?: { lat: number; lng: number; address?: string; name?: string };
+  dropoffLocation?: { lat: number; lng: number; address?: string; name?: string };
+}
+
+interface DeliveryCardData {
+  deliveryId?: number | string;
+  rideCode?: string;
+  senderName?: string;
+  pickupAddress?: string;
+  dropoffAddress?: string;
+  estimatedFare?: number;
+  distance?: number;
+  pickupLocation?: { lat: number; lng: number; address?: string; name?: string };
+  dropoffLocation?: { lat: number; lng: number; address?: string; name?: string };
+  packageType?: string | null;
+  isFragile?: boolean;
+  weightKg?: number | null;
+  recipientName?: string | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class FloatingBubbleService {
   private pendingRequestCount = 0;
 
+  // ─── Permission helpers ────────────────────────────────────────────────────
+
+  private async ensurePermission(): Promise<boolean> {
+    const hasPermission = await DrawOverNativeModule.checkPermission();
+    if (hasPermission) return true;
+
+    logger.warn('⚠️ Draw-over permission not granted, requesting…');
+    await DrawOverNativeModule.requestPermission();
+    await new Promise(resolve => setTimeout(resolve, 900));
+
+    const granted = await DrawOverNativeModule.checkPermission();
+    if (!granted) logger.error('❌ Draw-over permission denied by user');
+    return granted;
+  }
+
+  // ─── Start (generic, no ride data) ────────────────────────────────────────
+
   /**
-   * Start the floating bubble (when driver goes online)
+   * Start the floating card without ride details.
+   * Typically called when the driver goes online.
    */
   async start(): Promise<boolean> {
     if (Platform.OS !== 'android') {
-      logger.warn('⚠️ Floating bubble only supported on Android');
+      logger.warn('⚠️ Floating card only supported on Android');
       return false;
     }
 
     try {
-      logger.info('🔵 Attempting to start floating bubble...');
-      
-      // Check if module is available
       if (!DrawOverNativeModule) {
         logger.error('❌ DrawOverNativeModule not available');
         return false;
       }
 
-      // Check permission first
-      const hasPermission = await DrawOverNativeModule.checkPermission();
-      logger.info(`🔐 Draw over permission: ${hasPermission}`);
-      
-      if (!hasPermission) {
-        logger.warn('⚠️ Draw over permission not granted, requesting...');
-        await DrawOverNativeModule.requestPermission();
-        
-        // Wait a bit for user to grant permission
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        const stillHasPermission = await DrawOverNativeModule.checkPermission();
-        if (!stillHasPermission) {
-          logger.error('❌ User did not grant permission');
-          return false;
-        }
-      }
+      const permitted = await this.ensurePermission();
+      if (!permitted) return false;
 
       await DrawOverNativeModule.startFloatingBubble();
-      
-      // Check if it's actually showing
-      const isShowing = await DrawOverNativeModule.isFloatingBubbleShowing();
-      logger.info(`📊 Bubble showing status: ${isShowing}`);
-      
-      if (isShowing) {
-        logger.info('✅ Floating bubble started successfully');
+
+      const showing = await DrawOverNativeModule.isFloatingBubbleShowing();
+      if (showing) {
+        logger.info('✅ Floating card started');
         return true;
-      } else {
-        logger.error('❌ Bubble not showing after start command');
-        return false;
       }
+
+      logger.error('❌ Card not showing after start');
+      return false;
     } catch (error) {
-      logger.error('❌ Error starting floating bubble:', error);
-      if (error instanceof Error) {
-        logger.error('Error details:', error.message);
-        logger.error('Error stack:', error.stack);
-      }
+      logger.error('❌ Error starting floating card:', error);
       return false;
     }
   }
 
+  // ─── Show card with ride details ──────────────────────────────────────────
+
   /**
-   * Stop the floating bubble (when driver goes offline)
+   * Show (or refresh) the floating card populated with ride request details.
+   *
+   * Native module requirement:
+   *   DrawOverNativeModule must expose `showRideCard(json: string): Promise<void>`.
+   *   In modules/expo-draw-over add:
+   *     AsyncFunction("showRideCard") { json: String ->
+   *         FloatingBubbleService.showRideCard(context, json)
+   *     }
+   *
+   * Falls back to `startFloatingBubble()` if the method is not yet wired up.
    */
-  async stop(): Promise<boolean> {
-    if (Platform.OS !== 'android') {
-      return false;
-    }
+  async showRideCard(data: RideCardData): Promise<boolean> {
+    if (Platform.OS !== 'android') return false;
 
     try {
-      logger.info('🛑 Stopping floating bubble...');
-      await DrawOverNativeModule.stopFloatingBubble();
-      this.pendingRequestCount = 0;
-      logger.info('✅ Floating bubble stopped');
+      if (!DrawOverNativeModule) return false;
+
+      const permitted = await this.ensurePermission();
+      if (!permitted) return false;
+
+      const json = JSON.stringify({
+        type:           'ride_request',
+        rideId:         data.rideId,
+        rideCode:       data.rideCode,
+        riderName:      data.riderName,
+        // Always prefer the nested location objects so the Kotlin side
+        // can read `.address` from `pickupLocation` / `dropoffLocation`
+        pickupAddress:  data.pickupLocation?.address ?? data.pickupAddress ?? 'Pickup',
+        dropoffAddress: data.dropoffLocation?.address ?? data.dropoffAddress ?? 'Dropoff',
+        pickupLocation:  data.pickupLocation,
+        dropoffLocation: data.dropoffLocation,
+        estimatedFare:  data.estimatedFare ?? 0,
+        distance:       data.distance ?? 0,
+      });
+
+      if (typeof (DrawOverNativeModule as any).showRideCard === 'function') {
+        await (DrawOverNativeModule as any).showRideCard(json);
+      } else {
+        // Fallback until native method is wired — shows card without details
+        logger.warn('⚠️ showRideCard not on native module yet, using startFloatingBubble fallback');
+        await DrawOverNativeModule.startFloatingBubble();
+      }
+
+      logger.info('✅ Floating ride card shown for ride:', data.rideId);
       return true;
     } catch (error) {
-      logger.error('❌ Error stopping floating bubble:', error);
+      logger.error('❌ Error showing ride card:', error);
       return false;
     }
   }
 
   /**
-   * Check if bubble is showing
+   * Show (or refresh) the floating card populated with delivery request details.
+   * Same native requirement as showRideCard above.
    */
-  async isShowing(): Promise<boolean> {
-    if (Platform.OS !== 'android') {
-      return false;
-    }
+  async showDeliveryCard(data: DeliveryCardData): Promise<boolean> {
+    if (Platform.OS !== 'android') return false;
 
     try {
-      const showing = await DrawOverNativeModule.isFloatingBubbleShowing();
-      logger.info(`📊 Bubble showing: ${showing}`);
-      return showing;
+      if (!DrawOverNativeModule) return false;
+
+      const permitted = await this.ensurePermission();
+      if (!permitted) return false;
+
+      const json = JSON.stringify({
+        type:           'delivery_request',
+        deliveryId:     data.deliveryId,
+        rideCode:       data.rideCode,
+        senderName:     data.senderName,
+        pickupAddress:  data.pickupLocation?.address ?? data.pickupAddress ?? 'Pickup',
+        dropoffAddress: data.dropoffLocation?.address ?? data.dropoffAddress ?? 'Dropoff',
+        pickupLocation:  data.pickupLocation,
+        dropoffLocation: data.dropoffLocation,
+        estimatedFare:  data.estimatedFare ?? 0,
+        distance:       data.distance ?? 0,
+        packageType:    data.packageType,
+        isFragile:      data.isFragile,
+        weightKg:       data.weightKg,
+        recipientName:  data.recipientName,
+      });
+
+      if (typeof (DrawOverNativeModule as any).showRideCard === 'function') {
+        await (DrawOverNativeModule as any).showRideCard(json);
+      } else {
+        logger.warn('⚠️ showRideCard not on native module yet, using startFloatingBubble fallback');
+        await DrawOverNativeModule.startFloatingBubble();
+      }
+
+      logger.info('✅ Floating delivery card shown for delivery:', data.deliveryId);
+      return true;
     } catch (error) {
-      logger.error('❌ Error checking bubble status:', error);
+      logger.error('❌ Error showing delivery card:', error);
       return false;
     }
   }
 
-  /**
-   * Update badge count (number of pending ride requests)
-   */
-  async updateBadge(count: number): Promise<void> {
-    if (Platform.OS !== 'android') {
-      return;
-    }
+  // ─── Stop ─────────────────────────────────────────────────────────────────
 
+  async stop(): Promise<boolean> {
+    if (Platform.OS !== 'android') return false;
+
+    try {
+      await DrawOverNativeModule.stopFloatingBubble();
+      this.pendingRequestCount = 0;
+      logger.info('✅ Floating card stopped');
+      return true;
+    } catch (error) {
+      logger.error('❌ Error stopping floating card:', error);
+      return false;
+    }
+  }
+
+  // ─── Status ───────────────────────────────────────────────────────────────
+
+  async isShowing(): Promise<boolean> {
+    if (Platform.OS !== 'android') return false;
+    try {
+      return await DrawOverNativeModule.isFloatingBubbleShowing();
+    } catch {
+      return false;
+    }
+  }
+
+  // ─── Badge ────────────────────────────────────────────────────────────────
+
+  async updateBadge(count: number): Promise<void> {
+    if (Platform.OS !== 'android') return;
     try {
       this.pendingRequestCount = count;
       await DrawOverNativeModule.updateBubbleBadge(count);
@@ -123,49 +231,32 @@ class FloatingBubbleService {
     }
   }
 
-  /**
-   * Increment badge count
-   */
   async incrementBadge(): Promise<void> {
     await this.updateBadge(this.pendingRequestCount + 1);
   }
 
-  /**
-   * Decrement badge count
-   */
   async decrementBadge(): Promise<void> {
-    const newCount = Math.max(0, this.pendingRequestCount - 1);
-    await this.updateBadge(newCount);
+    await this.updateBadge(Math.max(0, this.pendingRequestCount - 1));
   }
 
-  /**
-   * Reset badge count
-   */
   async resetBadge(): Promise<void> {
     await this.updateBadge(0);
   }
 
-  /**
-   * Show ripple effect (for urgent ride requests)
-   */
-  async showRipple(): Promise<void> {
-    if (Platform.OS !== 'android') {
-      return;
-    }
+  getBadgeCount(): number {
+    return this.pendingRequestCount;
+  }
 
+  // ─── Ripple ───────────────────────────────────────────────────────────────
+
+  async showRipple(): Promise<void> {
+    if (Platform.OS !== 'android') return;
     try {
       await DrawOverNativeModule.showBubbleRipple();
-      logger.info('✅ Ripple effect shown');
+      logger.info('✅ Ripple triggered');
     } catch (error) {
       logger.error('❌ Error showing ripple:', error);
     }
-  }
-
-  /**
-   * Get current badge count
-   */
-  getBadgeCount(): number {
-    return this.pendingRequestCount;
   }
 }
 

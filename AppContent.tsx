@@ -123,8 +123,9 @@ export default function AppContent() {
       }
       // 2. If showing the 404 screen, reset it and reload
       if (is404) {
-        setIs404(false);
-        webViewRef.current?.reload();
+        setIs404(false)
+        // webViewRef.current?.reload();
+        webViewRef.current?.injectJavaScript(`window.location = ""`);
         return true;
       }
       // 3. Navigate back in the WebView if possible
@@ -235,9 +236,22 @@ export default function AppContent() {
     };
   };
 
-  const showBubbleTemporarily = async () => {
+  const showBubbleTemporarily = async (data:any,type:String) => {
+      if(currentRideRequest || currentDeliveryRequest || showRideRequestModal || showDeliveryRequestModal){
+        await FloatingBubbleService.stop()
+        return // don't have the draw over overlay the request overlay
+      }
       try {
-        await FloatingBubbleService.start(); // show the bubble
+        if(type === "ride"){
+          const dataObject = { ...data }
+           console.log('request data dataObject',dataObject)
+           await FloatingBubbleService.showRideCard(data)
+        }
+        else{ // type === "delivery"
+           console.log('request data delivery',data)
+           await FloatingBubbleService.showDeliveryCard(normalizeDeliveryRequest(data));
+        }
+        //await FloatingBubbleService.start(); // show the bubble
 
         setTimeout(async () => {
          try {
@@ -322,7 +336,7 @@ export default function AppContent() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deliveryId }),
       }); // becasue if you accepted the ride straight up, you would be unauthorized, since modal exist outside the frontend which has token
-      console.log('response on deli',response)
+     
       if (!response.ok) throw new Error('Failed to accept delivery');
       await FloatingBubbleService.decrementBadge();
       await DeviceSocketService.emit(SOCKET_EVENTS.DELIVERY.ACCEPTED, { deliveryId });
@@ -441,10 +455,41 @@ export default function AppContent() {
 };
 
   // ── Notifications init ──
-  useEffect(() => {
-    NotificationService.initialize(sendToWebView);
-    return () => { NotificationService.cleanup(); };
-  }, [sendToWebView]);
+useEffect(() => {
+  NotificationService.initialize(sendToWebView);
+
+  // Register action button categories for ride & delivery requests
+  const registerCategories = async () => {
+    await Notifications.setNotificationCategoryAsync('ride_request', [
+      {
+        identifier: 'accept',
+        buttonTitle: '✅ Accept',
+        options: { opensAppToForeground: true },
+      },
+      {
+        identifier: 'decline',
+        buttonTitle: '❌ Decline',
+        options: { opensAppToForeground: false, isDestructive: true },
+      },
+    ]);
+
+    await Notifications.setNotificationCategoryAsync('delivery_request', [
+      {
+        identifier: 'accept',
+        buttonTitle: '✅ Accept',
+        options: { opensAppToForeground: true },
+      },
+      {
+        identifier: 'decline',
+        buttonTitle: '❌ Decline',
+        options: { opensAppToForeground: false, isDestructive: true },
+      },
+    ]);
+  };
+
+  registerCategories();
+  return () => { NotificationService.cleanup(); };
+}, [sendToWebView]);
 
   // ── Notification response listener ──
   useEffect(() => {
@@ -616,7 +661,7 @@ export default function AppContent() {
       }
       console.log('socketlog- ride:request:received — writing to bridge, rideId:', data?.rideId);
       await AudioService.playAlert('ride_request');
-      showBubbleTemporarily()
+      showBubbleTemporarily(data,'ride')
       await FloatingBubbleService.incrementBadge();
       await FloatingBubbleService.showRipple();
       _bridge.pendingRideRequest = normalizeRideRequest(data);
@@ -656,7 +701,11 @@ export default function AppContent() {
         sendToWebView({ type: WEBVIEW_EVENTS.TRIP_STARTED, payload: data }); 
     })
     DeviceSocketService.on(SOCKET_EVENTS.RIDE.TRIP_COMPLETED,async (data: any) => { await NotificationService.show({ title: 'Trip Completed', body: `Fare: K${data.finalFare?.toFixed(2) || 0}`, data }); sendToWebView({ type: WEBVIEW_EVENTS.TRIP_COMPLETED, payload: data }); });
-    DeviceSocketService.on(SOCKET_EVENTS.RIDE.CANCELLED,     async (data: any) => { await NotificationService.show({ title: 'Ride Cancelled', body: data.reason || 'The ride has been cancelled', data }); sendToWebView({ type: WEBVIEW_EVENTS.RIDE_CANCELLED, payload: data }); });
+    DeviceSocketService.on(SOCKET_EVENTS.RIDE.CANCELLED,     async (data: any) => { 
+      setShowRideRequestModal(false)
+      await NotificationService.show({ title: 'Ride Cancelled', body: data.reason || 'The ride has been cancelled', data }); 
+      sendToWebView({ type: WEBVIEW_EVENTS.RIDE_CANCELLED, payload: data }); 
+    })
     DeviceSocketService.on(SOCKET_EVENTS.RIDE.ACCEPT_SUCCESS, (data: any) => { 
         sendToWebView({ type: WEBVIEW_EVENTS.RIDE_ACCEPT_SUCCESS,  payload: data }) 
     });
@@ -664,8 +713,11 @@ export default function AppContent() {
 
     DeviceSocketService.on(SOCKET_EVENTS.DRIVER.ARRIVED, async (data: any) => {
       const urls = await getFrontendUrls();
-      if (webViewRef.current && frontendNameRef.current !== 'rider') {
+      if (webViewRef.current && frontendNameRef.current === 'rider') {
         webViewRef.current?.injectJavaScript(`window.location.href = "${urls['okra-rider-app']}/"`);
+      }
+      if (webViewRef.current && frontendNameRef.current !== 'rider'){
+         return
       }
       await AudioService.playAlert('driver_arrived');
       await NotificationService.showHighPriority({ title: 'Driver Arrived', body: 'Your driver is waiting for you', data });
@@ -711,7 +763,7 @@ export default function AppContent() {
         return 
       }
       await AudioService.playAlert('ride_request');
-      showBubbleTemporarily()
+      showBubbleTemporarily(data,'delivery')
       await FloatingBubbleService.incrementBadge();
       await FloatingBubbleService.showRipple();
       _bridge.pendingDeliveryRequest = normalizeDeliveryRequest(data);
@@ -765,6 +817,7 @@ export default function AppContent() {
     });
 
     DeviceSocketService.on(SOCKET_EVENTS.DELIVERY.CANCELLED, async (data: any) => {
+      setCurrentDeliveryRequest(false)
       await NotificationService.show({ title: 'Delivery Cancelled', body: data.reason || 'The delivery has been cancelled', data });
       sendToWebView({ type: WEBVIEW_EVENTS.DELIVERY_CANCELLED, payload: data });
     });
@@ -869,7 +922,8 @@ export default function AppContent() {
 
 const handleRetry = useCallback(() => {
   setHasError(false);
-  webViewRef.current?.reload();
+  webViewRef.current?.injectJavaScript(`window.location = ""`);
+ // webViewRef.current?.reload();
 }, []);
 
   // ── WebView message handler ──────────────────────────────────────────────
@@ -1042,7 +1096,9 @@ const handleRetry = useCallback(() => {
       deviceIdRef.current = deviceId
       userIdRef.current = userId
       frontendNameRef.current = frontendName;
+      LocationService.setDeviceId(deviceId);
       const socketUrl = socketServerUrl || CONSTANTS.DEVICE_SOCKET_URL;
+      //await BackgroundService.start({ deviceId, userId, frontendName, socketServerUrl: socketUrl });
       await DeviceSocketService.connect(socketUrl)
       setupSocketListeners(deviceId, frontendName) 
       await DeviceSocketService.registerDevice({ deviceId, userId, userType: frontendName, frontendName, notificationToken: null, deviceInfo, socketServerUrl: socketUrl });
@@ -1097,7 +1153,8 @@ const handleRetry = useCallback(() => {
           style={styles.retryButton}
           onPress={() => {
             setIs404(false);
-            webViewRef.current?.reload();
+            webViewRef.current?.injectJavaScript(`window.location = ""`);
+            //webViewRef.current?.reload();
           }}
         >
           <Text style={styles.retryButtonText}>Try Again</Text>
@@ -1110,7 +1167,8 @@ const handleRetry = useCallback(() => {
     return (
      <OfflineScreen
       onRetry={() => {
-        webViewRef.current?.reload();
+        webViewRef.current?.injectJavaScript(`window.location = ""`);
+        //webViewRef.current?.reload();
       }}
     />
     )
@@ -1120,7 +1178,8 @@ const handleRetry = useCallback(() => {
     return (
      <OfflineScreen
       onRetry={() => {
-        webViewRef.current?.reload();
+        webViewRef.current?.injectJavaScript(`window.location = ""`);
+        //webViewRef.current?.reload();
       }}
     />
     )
