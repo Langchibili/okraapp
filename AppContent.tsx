@@ -574,17 +574,23 @@ useEffect(() => {
     if (Platform.OS === 'android' && frontendName !== 'rider') {
       DeviceSocketService.on('showDrawOver', async (overlayData: any) => {
         console.log('socketlog- showDrawOver:', overlayData?.rideId ?? overlayData?.deliveryId);
-
+        
         // Delivery draw-over — forward as delivery request
         if (overlayData.deliveryId) {
           await AudioService.playAlert('ride_request');
           await FloatingBubbleService.incrementBadge();
           await FloatingBubbleService.showRipple();
           const hasPermission = await PermissionManager.checkDrawOverPermission();
-          if (hasPermission) await BackgroundService.showRideRequest(overlayData);
+          if (hasPermission) await BackgroundService.showRideRequest(overlayData,'delivery');
+          let senderName = overlayData
+              ? (overlayData.senderName || 'Sender')
+              : 'Sender';
+          if(senderName === "null null"){
+              senderName = "Sender"
+          }
           await NotificationService.showRideRequest({
             rideId: overlayData.deliveryId, rideCode: overlayData.rideCode,
-            riderName: overlayData.senderName,
+            riderName: senderName,
             pickupAddress: overlayData.pickupLocation?.address || 'Pickup',
             dropoffAddress: overlayData.dropoffLocation?.address || 'Dropoff',
             estimatedFare: overlayData.estimatedFare || 0, distance: overlayData.distance || 0,
@@ -594,12 +600,18 @@ useEffect(() => {
           return;
         }
 
-        // Ride draw-over (original logic)
+          // Ride draw-over (original logic)
         if (overlayData.shouldDrawOver === false) {
+          let riderName = overlayData
+            ? (overlayData.riderName || 'Passenger')
+            : 'Passenger';
+          if(riderName === "null null"){
+              riderName = "Passenger"
+          }
           await FloatingBubbleService.incrementBadge();
           await FloatingBubbleService.showRipple();
           await NotificationService.showRideRequest({
-            rideId: overlayData.rideId, rideCode: overlayData.rideCode, riderName: overlayData.riderName,
+            rideId: overlayData.rideId, rideCode: overlayData.rideCode, riderName: riderName,
             pickupAddress: overlayData.pickupLocation?.address || overlayData.pickupAddress || 'Pickup',
             dropoffAddress: overlayData.dropoffLocation?.address || overlayData.dropoffAddress || 'Dropoff',
             estimatedFare: overlayData.estimatedFare || 0, distance: overlayData.distance || 0,
@@ -613,8 +625,14 @@ useEffect(() => {
         await FloatingBubbleService.showRipple();
         const hasPermission = await PermissionManager.checkDrawOverPermission();
         if (hasPermission) await BackgroundService.showRideRequest(overlayData);
+        let riderName = overlayData
+            ? (overlayData.riderName || 'Passenger')
+            : 'Passenger';
+          if(riderName === "null null"){
+              riderName = "Passenger"
+          }
         await NotificationService.showRideRequest({
-          rideId: overlayData.rideId, rideCode: overlayData.rideCode, riderName: overlayData.riderName,
+          rideId: overlayData.rideId, rideCode: overlayData.rideCode, riderName: riderName,
           pickupAddress: overlayData.pickupLocation?.address || overlayData.pickupAddress || 'Pickup',
           dropoffAddress: overlayData.dropoffLocation?.address || overlayData.dropoffAddress || 'Dropoff',
           estimatedFare: overlayData.estimatedFare || 0, distance: overlayData.distance || 0,
@@ -643,8 +661,14 @@ useEffect(() => {
       await FloatingBubbleService.showRipple();
       _bridge.pendingRideRequest = data;
       _bridge.pendingVisible     = true;
+      let riderName = data
+          ? (data.riderName || 'Passenger')
+          : 'Passenger';
+      if(riderName === "null null"){
+          riderName = "Passenger"
+      }
       await NotificationService.showRideRequest({
-        rideId: data.rideId, rideCode: data.rideCode, riderName: data.riderName,
+        rideId: data.rideId, rideCode: data.rideCode, riderName: riderName,
         pickupAddress: data.pickupLocation?.address || data.pickupAddress || 'Pickup',
         dropoffAddress: data.dropoffLocation?.address || data.dropoffAddress || 'Dropoff',
         estimatedFare: data.estimatedFare || 0, distance: data.distance || 0,
@@ -666,8 +690,14 @@ useEffect(() => {
       await FloatingBubbleService.showRipple();
       _bridge.pendingRideRequest = normalizeRideRequest(data);
       _bridge.pendingVisible     = true;
+      let riderName = data
+          ? (data.riderName || 'Passenger')
+          : 'Passenger';
+      if(riderName === "null null"){
+          riderName = "Passenger"
+      }
       await NotificationService.showRideRequest({
-        rideId: data.rideId, rideCode: data.rideCode, riderName: data.riderName,
+        rideId: data.rideId, rideCode: data.rideCode, riderName: riderName,
         pickupAddress: data.pickupLocation?.address || data.pickupAddress || 'Pickup',
         dropoffAddress: data.dropoffLocation?.address || data.dropoffAddress || 'Dropoff',
         estimatedFare: data.estimatedFare || 0, distance: data.distance || 0,
@@ -744,16 +774,22 @@ useEffect(() => {
       await FloatingBubbleService.showRipple();
       _bridge.pendingDeliveryRequest = normalizeDeliveryRequest(data);
       _bridge.pendingDeliveryVisible = true;
+      let senderName = data
+          ? (data.senderName || 'Sender')
+          : 'Sender';
+      if(senderName === "null null"){
+          senderName = "Sender"
+      }
       await NotificationService.showRideRequest({
         rideId:         data.deliveryId, rideCode: data.rideCode,
-        riderName:      data.senderName,
+        riderName:      senderName,
         pickupAddress:  data.pickupLocation?.address  || 'Pickup',
         dropoffAddress: data.dropoffLocation?.address || 'Dropoff',
         estimatedFare:  data.estimatedFare || 0, distance: data.distance || 0,
         pickupLocation: data.pickupLocation, dropoffLocation: data.dropoffLocation,
       });
       const hasPermission = await PermissionManager.checkDrawOverPermission();
-      if (hasPermission) await BackgroundService.showRideRequest({ ...data, rideId: data.deliveryId });
+      if (hasPermission) await BackgroundService.showRideRequest({ ...data, rideId: data.deliveryId },'delivery');
       sendToWebView({ type: WEBVIEW_EVENTS.DELIVERY_REQUEST_SENT, payload: data });
     });
 
@@ -768,9 +804,15 @@ useEffect(() => {
       await FloatingBubbleService.showRipple();
       _bridge.pendingDeliveryRequest = normalizeDeliveryRequest(data);
       _bridge.pendingDeliveryVisible = true;
+      let senderName = data
+          ? (data.senderName || 'Sender')
+          : 'Sender';
+      if(senderName === "null null"){
+          senderName = "Sender"
+      }
       await NotificationService.showRideRequest({
         rideId:         data.deliveryId, rideCode: data.rideCode,
-        riderName:      data.senderName,
+        riderName:      senderName,
         pickupAddress:  data.pickupLocation?.address  || 'Pickup',
         dropoffAddress: data.dropoffLocation?.address || 'Dropoff',
         estimatedFare:  data.estimatedFare || 0, distance: data.distance || 0,
@@ -817,7 +859,7 @@ useEffect(() => {
     });
 
     DeviceSocketService.on(SOCKET_EVENTS.DELIVERY.CANCELLED, async (data: any) => {
-      setCurrentDeliveryRequest(false)
+      setShowDeliveryRequestModal(false)
       await NotificationService.show({ title: 'Delivery Cancelled', body: data.reason || 'The delivery has been cancelled', data });
       sendToWebView({ type: WEBVIEW_EVENTS.DELIVERY_CANCELLED, payload: data });
     });
@@ -1163,16 +1205,16 @@ const handleRetry = useCallback(() => {
     );
   }
 
-  if (hasError) {
-    return (
-     <OfflineScreen
-      onRetry={() => {
-        webViewRef.current?.injectJavaScript(`window.location = ""`);
-        //webViewRef.current?.reload();
-      }}
-    />
-    )
-  }
+  // if (hasError) {
+  //   return (
+  //    <OfflineScreen
+  //     onRetry={() => {
+  //       webViewRef.current?.injectJavaScript(`window.location = ""`);
+  //       //webViewRef.current?.reload();
+  //     }}
+  //   />
+  //   )
+  // }
 
   if (!isConnected) {
     return (

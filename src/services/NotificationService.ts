@@ -860,7 +860,12 @@ class NotificationService {
   async showRideRequest(data: RideRequestData): Promise<void> {
     try {
       logger.info('🚗 Showing ride request notification:', data.rideCode);
-
+      let riderName = data
+          ? (data.riderName || 'Passenger')
+          : 'Passenger';
+      if(riderName === "null null"){
+          riderName = "Passenger"
+      }
       const content: Notifications.NotificationContentInput = {
         title: '🚗 New Ride Request!',
         body: `${data.rideCode} - ${data.riderName}\n📍 ${data.pickupAddress}\n🎯 ${data.dropoffAddress}\n💰 K${data.estimatedFare.toFixed(2)} • ${data.distance.toFixed(1)} km`,
@@ -868,7 +873,7 @@ class NotificationService {
           type: 'ride_request',
           rideId: data.rideId,
           rideCode: data.rideCode,
-          riderName: data.riderName,
+          riderName: riderName,
           pickupAddress: data.pickupAddress,
           dropoffAddress: data.dropoffAddress,
           estimatedFare: data.estimatedFare,
@@ -910,7 +915,12 @@ class NotificationService {
   async showDeliveryRequest(data: DeliveryRequestData): Promise<void> {
     try {
       logger.info('📦 Showing delivery request notification:', data.rideCode);
-
+      let senderName = data
+          ? (data.senderName || 'Sender')
+          : 'Sender';
+      if(senderName === "null null"){
+          senderName = "Sender"
+      }
       const content: Notifications.NotificationContentInput = {
         title: '📦 New Delivery Request!',
         body: `${data.rideCode ?? ''} - ${data.senderName ?? 'Sender'}\n📍 ${data.pickupAddress}\n🎯 ${data.dropoffAddress}\n💰 K${data.estimatedFare.toFixed(2)} • ${data.distance.toFixed(1)} km`,
@@ -918,7 +928,7 @@ class NotificationService {
           type: 'delivery_request',
           deliveryId: data.deliveryId,
           rideCode: data.rideCode,
-          senderName: data.senderName,
+          senderName: senderName,
           pickupAddress: data.pickupAddress,
           dropoffAddress: data.dropoffAddress,
           estimatedFare: data.estimatedFare,

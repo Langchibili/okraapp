@@ -109,16 +109,26 @@ class BackgroundService {
   /**
    * Show ride request (using notification instead of draw-over)
    */
-  async showRideRequest(rideData: any): Promise<void> {
+  async showRideRequest(rideData: any, type="rider"): Promise<void> {
     try {
       logger.info('📱 Showing ride request notification');
       logger.info('📊 Ride data:', JSON.stringify(rideData, null, 2));
-
+      let riderName = rideData
+          ? (rideData.riderName || 'Passenger')
+          : 'Passenger';
+      if(riderName === "null null"){
+          riderName = "Passenger"
+      }
+      if(type === "delivery"){
+        if(riderName === "null null"){
+           riderName = "Sender"
+        }
+      }
       // Transform data to match notification format
       const notificationData = {
         rideId: rideData.rideId || rideData.id,
         rideCode: rideData.rideCode || `RIDE-${rideData.rideId}`,
-        riderName: rideData.riderName || 'Rider',
+        riderName: riderName || 'Passenger',
         pickupAddress: rideData.pickupLocation?.address || 
                       rideData.pickupLocation?.name || 
                       rideData.pickupAddress || 

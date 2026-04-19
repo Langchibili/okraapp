@@ -114,12 +114,18 @@ class FloatingBubbleService {
 
       const permitted = await this.ensurePermission();
       if (!permitted) return false;
-
+      
+      let riderName = data
+          ? (data.riderName || 'Passenger')
+          : 'Passenger';
+      if(riderName === "null null"){
+          riderName = "Passenger"
+      }
       const json = JSON.stringify({
         type:           'ride_request',
         rideId:         data.rideId,
         rideCode:       data.rideCode,
-        riderName:      data.riderName,
+        riderName:      riderName,
         // Always prefer the nested location objects so the Kotlin side
         // can read `.address` from `pickupLocation` / `dropoffLocation`
         pickupAddress:  data.pickupLocation?.address ?? data.pickupAddress ?? 'Pickup',
@@ -158,12 +164,17 @@ class FloatingBubbleService {
 
       const permitted = await this.ensurePermission();
       if (!permitted) return false;
-
+      let senderName = data
+          ? (data.senderName || 'Sender')
+          : 'Sender';
+      if(senderName === "null null"){
+          senderName = "Sender"
+      }
       const json = JSON.stringify({
         type:           'delivery_request',
         deliveryId:     data.deliveryId,
         rideCode:       data.rideCode,
-        senderName:     data.senderName,
+        senderName:     senderName,
         pickupAddress:  data.pickupLocation?.address ?? data.pickupAddress ?? 'Pickup',
         dropoffAddress: data.dropoffLocation?.address ?? data.dropoffAddress ?? 'Dropoff',
         pickupLocation:  data.pickupLocation,

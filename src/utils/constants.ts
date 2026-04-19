@@ -1,6 +1,6 @@
 
-const environment = "local"
-//const environment = "production" as string
+//const environment = "local"
+const environment = "production" as string
 
 export const EXPO_PUBLIC_PROJECT_ID = "9dbb3dbf-f0c1-44fb-86df-e4681a1771cf"
 export const SOCKET_EVENTS = {
