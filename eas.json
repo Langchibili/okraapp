@@ -4,7 +4,21 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "production": {
+      "channel": "production",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "ios": {
+        "distribution": "store"
+      },
+      "env": {
+        "EXPO_PUBLIC_ENV": "production"
+      }
+    },
     "preview": {
+      "channel": "preview",
       "distribution": "internal",
       "android": {
         "buildType": "apk"
@@ -16,5 +30,8 @@
         "EXPO_PUBLIC_ENV": "staging"
       }
     }
+  },
+  "submit": {
+    "production": {}
   }
 }
