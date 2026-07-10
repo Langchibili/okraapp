@@ -415,7 +415,7 @@ export default function AppContent() {
       if (result.success && result.data?.length > 0) {
         const pendingRide = result.data[0];
         if (pendingRide?.rideStatus && pendingRide?.rideStatus !== "pending") {
-          return
+          setShowRideRequestModal(false);
         }
         setCurrentRideRequest({
           rideId: pendingRide.rideId, rideCode: pendingRide.rideCode,
@@ -437,7 +437,7 @@ export default function AppContent() {
       if (result.success && result.data?.length > 0) {
         const pending = result.data[0];
         if (pending?.rideStatus && pending?.rideStatus !== "pending") {
-          return
+          setShowDeliveryRequestModal(false)
         }
         setCurrentDeliveryRequest(normalizeDeliveryRequest({
           deliveryId: pending.deliveryId,
@@ -749,9 +749,9 @@ export default function AppContent() {
 
     DeviceSocketService.on(SOCKET_EVENTS.DRIVER.ARRIVED, async (data: any) => {
       const urls = await getFrontendUrls();
-      if (webViewRef.current && frontendNameRef.current === 'rider') {
-        webViewRef.current?.injectJavaScript(`window.location.href = "${urls['okra-rider-app']}/"`);
-      }
+      // if (webViewRef.current && frontendNameRef.current === 'rider') {
+      //   webViewRef.current?.injectJavaScript(`window.location.href = "${urls['okra-rider-app']}/"`);
+      // }
       if (webViewRef.current && frontendNameRef.current !== 'rider') {
         return
       }
